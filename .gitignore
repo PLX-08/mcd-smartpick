@@ -18,3 +18,7 @@ Thumbs.db
 
 # WorkBuddy internal data (automation memory) - do not publish
 .workbuddy/
+
+# 本地临时草稿 / 命令输出（勿提交）
+_*.txt
+_*.log

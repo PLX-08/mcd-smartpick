@@ -25,13 +25,16 @@ description: 麦当劳目标导向智能点餐 Skill。当用户提到麦当劳�
 2. **取数（MCP）**：
    - `query-nearby-stores` → 拿到 `storeCode`
    - `query-meals(storeCode)` → 实时菜单
-   - `list-nutrition-foods()` → 营养数据
+   - `list-nutrition-foods()` → 营养数据（**注意**：`query-meals` 不含营养字段，缺营养时按公开近似值兜底并在回复中说明）
    - `query-store-coupons(storeCode)` → 门店可用券
+   - **门店券要按"券品"处理**：券对应独立券品编码，挂在普通商品上会被拒（`code 600012`）。
+     正确做法是先用券品编码 + `couponId` 调一次 `calculate-price` 拿券后实付价，再把券品当候选参与组合。
 3. **算术（代码，不要口算）**：调用 `scripts/mcsmart.py` 中的 `smart_pick(goal, budget, items, coupons)`：
    - 把 MCP 返回的菜单映射为内部 `Item`（code/name/category/price/tags/nutrition/crave），
      把券映射为 `Coupon`（id/name/kind/value/min_spend/scope）。
    - 运行 `python scripts/mcsmart.py --goal <goal> --budget <budget>` 获取离线基准，
-     再用真实 MCP 数据复算（live 模式：`python scripts/mcsmart.py --live --goal <goal> --budget <budget>`）。
+     再用真实 MCP 数据复算：`python scripts/mcsmart.py --live --goal <goal> --budget <budget> --city <城市> --keyword <地标>`
+     （`live_pick()` 已内置真实的门店/菜单/券品解析，无需手写适配层）。
    - **价格与优惠一律以 `calculate-price` 的官方核算为准**，本地结果仅用于组合推荐。
 4. **表达（讲人话）**：用中文告诉用户——搭了什么、原价多少、用了哪张券、省了多少、营养如何、为什么这么搭。
 5. **下单（需确认）**：仅当用户明确说"下单/帮我点"时，才调用 `create-order`，并返回支付链接。**默认不自动下单。**
@@ -47,8 +50,10 @@ description: 麦当劳目标导向智能点餐 Skill。当用户提到麦当劳�
 - `python scripts/mcsmart.py --demo`：CLI 演示四个目标。
 - 打开 `demo/index.html`：网页交互演示（内置示例数据，零依赖、零 Token）。
 - 离线样例输出见 `demo/sample_run.md`；引擎测试见 `tests/test_engine.py`。
+- 真实回包解析回归：`python tests/test_live_adapt.py`（零依赖、无需 Token）。
 
 ## 参考
 
 - MCP 工具清单与注意事项：`references/tools.md`
 - MCP 调用流程与业务价值：`MCP_INTEGRATION.md`
+- 真实调用记录（含官方 traceId）：`evidence-real.md`

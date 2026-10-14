@@ -14,8 +14,25 @@
 - **不让大模型"算钱"**：套餐 / 优惠券的最优解交给确定性算法（纯函数），避免模型口算出错——这是用户最痛、模型最弱的点。
 - **目标驱动，而非菜单罗列**：省钱 / 增肌 / 低卡 / 解馋四档，直接对齐用户的真实意图。
 - **打开即跑**：`--demo` 离线模式 + `demo/index.html` 交互页，**不填 Token 也能立刻看到效果**。
-- **真连官方**：零依赖 Streamable HTTP 客户端（兼容 JSON 与 SSE 响应），可直接对接 `https://mcp.mcd.cn`。
+- **真连官方，且已实跑留证**：零依赖 Streamable HTTP 客户端（兼容 JSON 与 SSE 响应）对接 `https://mcp.mcd.cn`；四段链路（门店→菜单→券→计价）已真实跑通并留存官方 `traceId`，见 [`evidence-real.md`](evidence-real.md)。
 - **安全默认**：下单等交易类工具必须用户显式确认，默认只读与规划，不产生未授权订单。
+
+---
+
+## 🔬 真实数据验证（已实跑，含 traceId）
+
+2026-10-14 对 `mcp.mcd.cn` 的一次真实调用（门店：宁波海曙区开明街餐厅 `3330480`）：
+
+| 验证项 | 官方返回 |
+|---|---|
+| 附近门店 | 宁波天一广场命中 5 家，最近 218 m |
+| 实时菜单 | 巨无霸 `1100` = ¥25.50、中薯条 = ¥13.50、可乐 = ¥10.00 |
+| 门店券 | 2 张：中薯条买一送一、王牌小食拼 |
+| 官方计价 | 巨无霸+中薯条+可乐 = **¥49.00**（与本地算术一致 ✅） |
+| 券后价 | 中薯条买一送一 ¥27 → **¥13.50**；王牌小食拼 ¥22 → **¥15.90** |
+
+> 完整出入参与 `traceId` 见 [`evidence-real.md`](evidence-real.md)；真实回包已固化为离线 fixtures（`tests/test_live_adapt.py`，20 项回归全绿，**无需 Token**）。
+> 一个重要发现：**门店券是"指定商品特价券品"，不是满减券**——券挂在普通商品上会被官方拒绝（`code 600012`）。本项目据此把券建模为"券品"，先逐张取券后价再参与组合优化。
 
 ---
 
@@ -71,10 +88,13 @@ python tests/test_engine.py                             # 运行引擎测试
 
 ```bash
 export MCD_MCP_TOKEN="你的token"          # Windows: set MCD_MCP_TOKEN=...
-python scripts/mcsmart.py --live --goal save --budget 30
+python scripts/mcsmart.py --live --goal save --budget 40 --city 宁波 --keyword 天一广场
 ```
 
-环境变量：`MCD_MCP_TOKEN`（live 模式使用，也可用 `--token` 传入）。
+完整链路：`query-nearby-stores → query-meals → query-store-coupons →（券品取券后价）→ smart_pick → calculate-price`，
+输出为 JSON，含 `store`（命中门店）、`items/items_codes`、`live_price_check`（官方核算）。
+
+环境变量：`MCD_MCP_TOKEN`（live 模式使用，也可用 `--token` 传入）。参数：`--city` / `--keyword` / `--max-items`。
 
 ---
 
@@ -130,7 +150,10 @@ A：大模型不擅长精确算术，套餐/优惠券组合极易算错。本项
 A：不会。Token 仅通过环境变量 `MCD_MCP_TOKEN` 提供，仓库内不含任何真实凭据；下单等写操作默认需用户确认。
 
 **Q：价格/营养准确吗？**
-A：离线示例为公开近似值，仅供演示；**真实结果以麦当劳官方实时数据为准**。
+A：**价格以官方 `calculate-price` 核算为准**（本项目已实跑验证，见 [`evidence-real.md`](evidence-real.md)）；离线示例数据为公开近似值，仅供演示。营养方面需诚实说明：官方 `query-meals` **不返回营养字段**，live 模式对常见餐品使用公开近似值兜底，营养结论请以官方 `list-nutrition-foods` 为准。
+
+**Q：门店优惠券是怎么用的？**
+A：实测发现门店券是「**指定商品特价券品**」（如"中薯条买一送一"对应独立券品编码），**不是满减券**，挂在普通商品编码上会被官方拒绝（`code 600012`）。本项目据此把每张券转成"券品"：先调一次 `calculate-price` 拿到券后实付价，再把它作为一个候选加入组合优化——这样"用不用券、用哪张券"就变成了算法问题。
 
 ---
 
@@ -140,19 +163,21 @@ A：离线示例为公开近似值，仅供演示；**真实结果以麦当劳�
 mcd-smartpick/
 ├── README.md                  # 本文件
 ├── CONTEST_DECLARATION.md     # 参赛声明（官方原文，一字不改）
-├── MCP_INTEGRATION.md         # MCP Server / Tool / 调用流程 / 业务价值
+├── MCP_INTEGRATION.md         # MCP Server / Tool / 调用流程 / 业务价值 / 真实验证
+├── evidence-real.md           # 真实 MCP 调用记录（含官方 traceId）
 ├── SKILL.md                   # 技能主体（Agent 运行时加载）
 ├── mcp-config.example.json    # 脱敏配置（仅环境变量占位）
 ├── workbuddy.md               # WorkBuddy 开发对话上下文（3000 积分核验）
 ├── references/
 │   └── tools.md               # 真实工具清单与注意事项
 ├── scripts/
-│   └── mcsmart.py             # 零依赖 MCP 客户端 + 聪明点引擎 + 离线演示 + CLI
+│   └── mcsmart.py             # 零依赖 MCP 客户端 + 聪明点引擎 + 真实回包解析 + CLI
 ├── demo/
 │   ├── index.html             # 可交互网页演示（无需 Token）
 │   └── sample_run.md          # 离线 CLI 演示输出样本
 └── tests/
-    └── test_engine.py         # 引擎纯函数测试（零依赖）
+    ├── test_engine.py         # 引擎纯函数测试（零依赖，22 项）
+    └── test_live_adapt.py     # 真实 MCP 回包解析回归（零依赖，20 项）
 ```
 
 ---
@@ -160,6 +185,8 @@ mcd-smartpick/
 ## 冲奖小贴士
 
 榜单按 GitHub **Star 数**定名次（Star > 0 才进榜）。让评委 / 访客不填 Token 也能立刻看到效果是第一关：本项目提供 `--demo` 离线模式与 `demo/index.html` 交互页，**打开即懂、打开即跑**。
+
+第二关是"**真的接了**"：本项目已对官方 MCP 完成真实端到端调用并留存 `traceId`（见 [`evidence-real.md`](evidence-real.md)），且把真实回包固化成**无需 Token 的回归测试**——不是纸面 Demo，也不是"PPT 里说接了"。
 
 ---
 

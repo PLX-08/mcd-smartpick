@@ -66,3 +66,24 @@ Agent 把方案"讲成人话"：搭了什么、省了多少、营养如何
 - `delivery-query-addresses` / `delivery-create-address` / `delivery-query-stores`：扩展麦乐送（外送）场景。
 - `mall-points-products` / `mall-product-detail` / `mall-create-order`：积分兑换规划（"我的积分怎么花最值"）。
 - `campaign-calendar`：结合当月活动做"限时最优"。
+
+## 6. 真实链路验证（Live Evidence）
+
+本项目已对 `https://mcp.mcd.cn` 完成一次**真实端到端调用**，四段链路（门店 → 菜单 → 券 → 计价）全部跑通，明细见 **[`evidence-real.md`](evidence-real.md)**（含官方 `traceId`，可追溯）。
+
+| 环节 | 工具 | 真实验证结果 |
+|---|---|---|
+| 门店 | `query-nearby-stores` | 宁波天一广场命中 5 家，最近 `3330480`（218 m） |
+| 菜单 | `query-meals` | 13 个分类、实时价（巨无霸 `1100` = ¥25.5） |
+| 券 | `query-store-coupons` | 2 张券：中薯条买一送一 / 王牌小食拼 |
+| 计价 | `calculate-price` | 巨无霸+中薯条+可乐 = **¥49.00**；券品「中薯条买一送一」**¥27 → ¥13.50**；「王牌小食拼」**¥22 → ¥15.90** |
+
+**由此得到的两条关键设计结论**（已落地到代码）：
+
+1. **门店券是"券品"，不是"满减券"**：券对应**独立券品编码**，挂在普通商品上会被拒——
+   `4810` + couponId → `{"code": 600012,"message":"促销规则不支持该商品"}`。
+   因此 `_adapt_deal_items()` 逐张 `calculate-price` 取**券后实付价**，把券品作为候选加入组合优化。
+2. **`query-meals` 不含营养字段**：live 模式对常见餐品用公开近似值兜底，营养结论以 `list-nutrition-foods` 为准（已在 `live_pick` 返回值与文档中显式标注，不夸大）。
+
+真实回包已固化为离线 fixtures，回归测试不依赖 Token：
+`tests/test_live_adapt.py`（20 项全绿），解析逻辑见 `scripts/mcsmart.py` 第 5b 节。
