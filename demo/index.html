@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>麦门聪明点 · McSmartPick 离线演示</title>
+<style>
+  :root{
+    --bg:#fff8f0; --card:#ffffff; --line:#ffe0b3; --text:#3a2a16;
+    --accent:#ff8c00; --accent2:#e63946; --green:#2a9d4a; --muted:#9b7b4a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,#fff8f0,#fff1e0);color:#3a2a16;padding:24px;}
+  .wrap{max-width:760px;margin:0 auto;}
+  header{text-align:center;margin-bottom:18px;}
+  header h1{font-size:26px;margin:0 0 6px;color:#e63946;}
+  header p{margin:0;color:#8a6d3b;font-size:14px;}
+  .card{background:#fff;border:1px solid #ffe0b3;border-radius:16px;padding:18px 20px;
+    box-shadow:0 6px 20px rgba(230,57,70,.08);margin-bottom:16px;}
+  .goals{display:flex;gap:10px;flex-wrap:wrap;}
+  .goal{flex:1;min-width:120px;padding:12px 10px;border:2px solid #ffe0b3;border-radius:12px;
+    background:#fffaf2;cursor:pointer;text-align:center;transition:.15s;font-size:14px;}
+  .goal:hover{border-color:#ff8c00;}
+  .goal.active{background:#fff1dc;border-color:#ff8c00;font-weight:700;color:#e63946;}
+  .goal small{display:block;color:#9b7b4a;font-size:12px;margin-top:3px;font-weight:400;}
+  .row{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap;}
+  .row label{font-weight:600;}
+  input[type=range]{flex:1;accent-color:#ff8c00;}
+  .budget-val{font-weight:700;color:#e63946;min-width:64px;text-align:right;}
+  button.go{margin-top:18px;width:100%;padding:14px;border:0;border-radius:12px;
+    background:linear-gradient(135deg,#ff8c00,#e63946);color:#fff;font-size:17px;font-weight:700;cursor:pointer;}
+  button.go:hover{filter:brightness(1.05);}
+  .result{display:none;}
+  .result h2{font-size:18px;margin:4px 0 12px;color:#e63946;}
+  .combo{font-size:18px;font-weight:700;margin-bottom:8px;}
+  .line{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ffe0b3;font-size:14px;}
+  .line:last-child{border-bottom:0;}
+  .save{color:#2a9d4a;font-weight:700;}
+  .nut{color:#8a6d3b;}
+  .foot{text-align:center;color:#9b7b4a;font-size:12px;margin-top:8px;}
+  .badge{display:inline-block;background:#fff1dc;color:#e63946;border:1px solid #ffd29a;
+    border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🍔 麦门聪明点 · McSmartPick</h1>
+    <p>基于麦当劳官方 MCP 的「目标导向智能点餐」· 离线演示（无需 Token，数据为示例）</p>
+  </header>
+
+  <div class="card">
+    <div class="badge">选择你的目标</div>
+    <div class="goals" id="goals">
+      <div class="goal active" data-goal="save">省钱<small>预算内最划算</small></div>
+      <div class="goal" data-goal="protein">增肌高蛋白<small>蛋白最大化</small></div>
+      <div class="goal" data-goal="lowcal">低卡控糖<small>低热量高蛋白</small></div>
+      <div class="goal" data-goal="crave">解馋满足<small>快乐最大化</small></div>
+    </div>
+    <div class="row">
+      <label>预算</label>
+      <input type="range" id="budget" min="15" max="60" step="1" value="30" />
+      <span class="budget-val">¥<span id="budgetVal">30</span></span>
+    </div>
+    <button class="go" id="go">🤖 帮我聪明点</button>
+  </div>
+
+  <div class="card result" id="result">
+    <h2 id="resTitle"></h2>
+    <div class="combo" id="resCombo"></div>
+    <div class="line"><span>原价</span><span id="resRaw"></span></div>
+    <div class="line"><span>使用优惠券</span><span id="resCoupon"></span></div>
+    <div class="line"><span>立减</span><span class="save" id="resDiscount"></span></div>
+    <div class="line"><span>👉 实付</span><span class="save" id="resFinal"></span></div>
+    <div class="line nut"><span>营养参考</span><span id="resNut"></span></div>
+  </div>
+
+  <div class="foot">本项目为麦当劳中国 1024 程序员节创意开发大赛参赛作品，非官方产品。真实餐品/价格/营养以麦当劳官方实时数据为准。</div>
+</div>
+
+<script>
+// ---------- 示例数据（与 scripts/mcsmart.py 一致，真实数据由 MCP 提供）----------
+const ITEMS = [
+  {code:"M1",name:"巨无霸",cat:"main",price:24,tags:["经典","牛肉"],n:{kcal:524,protein:25,fat:28,carb:42,sodium:970},crave:9},
+  {code:"M2",name:"麦辣鸡腿堡",cat:"main",price:21,tags:["辣","鸡肉"],n:{kcal:500,protein:21,fat:26,carb:44,sodium:980},crave:8},
+  {code:"M3",name:"板烧鸡腿堡",cat:"main",price:22,tags:["鸡肉"],n:{kcal:440,protein:27,fat:18,carb:42,sodium:1100},crave:7},
+  {code:"M4",name:"双层吉士堡",cat:"main",price:19,tags:["牛肉","芝士"],n:{kcal:440,protein:25,fat:23,carb:34,sodium:1010},crave:8},
+  {code:"M5",name:"麦香鸡",cat:"main",price:14,tags:["鸡肉"],n:{kcal:410,protein:17,fat:22,carb:36,sodium:760},crave:6},
+  {code:"M6",name:"猪柳麦满分",cat:"breakfast",price:13,tags:["早餐","猪肉"],n:{kcal:310,protein:17,fat:16,carb:26,sodium:750},crave:6},
+  {code:"S1",name:"薯条(大)",cat:"side",price:12,tags:["薯条"],n:{kcal:500,protein:6,fat:25,carb:63,sodium:650},crave:9},
+  {code:"S2",name:"薯条(中)",cat:"side",price:10,tags:["薯条"],n:{kcal:340,protein:4,fat:17,carb:43,sodium:440},crave:8},
+  {code:"S3",name:"麦乐鸡(6块)",cat:"side",price:15,tags:["鸡肉","分享"],n:{kcal:290,protein:15,fat:16,carb:17,sodium:540},crave:8},
+  {code:"S4",name:"玉米杯",cat:"side",price:9,tags:["蔬菜","健康"],n:{kcal:90,protein:3,fat:1,carb:18,sodium:10},crave:3},
+  {code:"S5",name:"苹果片",cat:"side",price:8,tags:["水果","健康"],n:{kcal:35,protein:0,fat:0,carb:8,sodium:0},crave:2},
+  {code:"D1",name:"可乐(中)",cat:"drink",price:10,tags:["碳酸","冰"],n:{kcal:150,protein:0,fat:0,carb:39,sodium:15},crave:7},
+  {code:"D2",name:"雪碧(中)",cat:"drink",price:10,tags:["碳酸","冰"],n:{kcal:150,protein:0,fat:0,carb:39,sodium:15},crave:7},
+  {code:"D3",name:"纯牛奶",cat:"drink",price:11,tags:["牛奶","健康"],n:{kcal:150,protein:8,fat:8,carb:12,sodium:110},crave:4},
+  {code:"D4",name:"橙汁(小)",cat:"drink",price:12,tags:["果汁","维C"],n:{kcal:110,protein:1,fat:0,carb:26,sodium:10},crave:5},
+  {code:"D5",name:"美式咖啡",cat:"drink",price:13,tags:["咖啡","无糖"],n:{kcal:5,protein:0,fat:0,carb:1,sodium:5},crave:3},
+  {code:"E1",name:"麦旋风(OREO)",cat:"dessert",price:16,tags:["甜品","冰"],n:{kcal:350,protein:6,fat:12,carb:54,sodium:180},crave:10},
+  {code:"E2",name:"苹果派",cat:"dessert",price:7,tags:["甜品","热"],n:{kcal:250,protein:3,fat:11,carb:36,sodium:230},crave:7},
+  {code:"E3",name:"圆筒冰淇淋",cat:"dessert",price:5,tags:["甜品","冰"],n:{kcal:150,protein:3,fat:4,carb:25,sodium:60},crave:8},
+  {code:"V1",name:"田园脆鸡沙拉",cat:"side",price:18,tags:["沙拉","健康","蔬菜"],n:{kcal:180,protein:12,fat:8,carb:14,sodium:420},crave:4},
+];
+const COUPONS = [
+  {id:"C1",name:"满30减8",kind:"amount",value:8,min:30,scope:"all"},
+  {id:"C2",name:"满40减12",kind:"amount",value:12,min:40,scope:"all"},
+  {id:"C3",name:"全场9折",kind:"percent",value:10,min:0,scope:"all"},
+  {id:"C4",name:"甜品满15减5",kind:"amount",value:5,min:15,scope:"dessert"},
+];
+const GOAL_CN = {save:"省钱", protein:"增肌高蛋白", lowcal:"低卡控糖", crave:"解馋满足"};
+
+// ---------- 引擎（与 Python scripts/mcsmart.py 的 smart_pick 同逻辑：约束内组合搜索）----------
+// 说明：与引擎严格对齐——枚举预算/热量/件数约束下的所有合法组合，按目标打分取最优，
+//       而非按"性价比"逐个贪心；这样演示页结果与 CLI `python scripts/mcsmart.py` 完全一致。
+function bestCoupon(total, cats){
+  let best=null, bestD=0;
+  for(const c of COUPONS){
+    if(total < c.min) continue;                              // 满减门槛校验
+    if(c.scope!=="all" && !cats.has(c.scope)) continue;      // 券作用域校验（如"甜品满15减5"）
+    let d = c.kind==="amount" ? c.value : total*c.value/100;
+    d = Math.min(d, total);                                  // 折扣不超过原价
+    if(d > bestD){ bestD=d; best=c; }                        // 默认不叠加，只取最优一张
+  }
+  return {coupon:best, discount:bestD};
+}
+function objectiveKey(goal, sel, final){
+  const prot = sel.reduce((s,i)=>s+i.n.protein,0);
+  if(goal==="protein" || goal==="save") return [prot, -final, -sel.length];
+  if(goal==="lowcal"){
+    const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
+    return [kcal>0 ? prot/kcal : 0, -final, -sel.length];
+  }
+  if(goal==="crave"){
+    const c = sel.reduce((s,i)=>s+i.crave,0);
+    return [c, -final, -sel.length];
+  }
+  throw new Error("未知目标: " + goal);
+}
+function keyGreater(a, b){          // 目标排序键比较（越大越优），保证确定性
+  for(let i=0;i<a.length;i++){
+    if(a[i] > b[i] + 1e-12) return true;
+    if(a[i] < b[i] - 1e-12) return false;
+  }
+  return false;
+}
+function combinations(arr, k){      // 与 Python itertools.combinations 的枚举顺序一致
+  const res=[];
+  const pick=(start, cur)=>{
+    if(cur.length===k){ res.push(cur.slice()); return; }
+    for(let i=start;i<arr.length;i++){ cur.push(arr[i]); pick(i+1, cur); cur.pop(); }
+  };
+  pick(0, []);
+  return res;
+}
+function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null){
+  // (1) 必含项优先保留（不参与搜索，始终入选）
+  const selReq = [];
+  for(const code of required){
+    const it = ITEMS.find(i=>i.code===code);
+    if(it && !selReq.includes(it)) selReq.push(it);
+  }
+  const pool = ITEMS.filter(i=>!selReq.includes(i));
+  const maxExtra = Math.max(0, maxItems - selReq.length);
+
+  // (2) 约束内组合搜索：枚举所有合法组合，按目标打分取最优
+  let best=null, bestKey=null;
+  const consider = (sel)=>{
+    const raw = sel.reduce((s,i)=>s+i.price,0);
+    if(raw > budget + 1e-9) return;                                  // 预算约束
+    const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
+    if(kcalCap!==null && kcal > kcalCap + 1e-9) return;             // 热量上限约束
+    const cats = new Set(sel.map(i=>i.cat));
+    const {coupon, discount} = bestCoupon(raw, cats);                // 券门槛 + 作用域
+    const final = Math.max(raw - discount, 0);
+    const key = objectiveKey(goal, sel, final);
+    if(best===null || keyGreater(key, bestKey)){
+      best = {sel: sel.slice(), raw, final, coupon, discount};
+      bestKey = key;
+    }
+  };
+  for(let k=0;k<=maxExtra;k++){
+    for(const combo of combinations(pool, k)){
+      consider(selReq.concat(combo));
+    }
+  }
+
+  // (3) 兜底：必含项已超预算而无任何合法组合时，至少返回必含项（不崩溃）
+  if(best===null){
+    const sel = selReq;
+    const raw = sel.reduce((s,i)=>s+i.price,0);
+    const cats = new Set(sel.map(i=>i.cat));
+    const {coupon, discount} = bestCoupon(raw, cats);
+    best = {sel, raw, final: Math.max(raw-discount,0), coupon, discount};
+  }
+
+  const {sel, raw, final, coupon, discount} = best;
+  const nut = sel.reduce((s,i)=>({kcal:s.kcal+i.n.kcal,protein:s.protein+i.n.protein,
+    fat:s.fat+i.n.fat,carb:s.carb+i.n.carb,sodium:s.sodium+i.n.sodium}),
+    {kcal:0,protein:0,fat:0,carb:0,sodium:0});
+  return {goal,items:sel.map(i=>i.name),raw:raw,coupon:coupon?coupon.name:null,
+    discount:discount,final:final,savings:raw-final,nut:nut};
+}
+
+// ---------- 交互 ----------
+let curGoal = "save";
+document.querySelectorAll(".goal").forEach(el=>{
+  el.addEventListener("click",()=>{
+    document.querySelectorAll(".goal").forEach(x=>x.classList.remove("active"));
+    el.classList.add("active"); curGoal = el.dataset.goal;
+  });
+});
+const budget = document.getElementById("budget");
+budget.addEventListener("input",()=>document.getElementById("budgetVal").textContent=budget.value);
+document.getElementById("go").addEventListener("click",()=>{
+  const plan = smartPick(curGoal, parseFloat(budget.value), [], 6, curGoal==="lowcal"?800:null);
+  document.getElementById("resTitle").textContent = `目标：${GOAL_CN[plan.goal]} ｜ 预算 ¥${budget.value}`;
+  document.getElementById("resCombo").textContent = "推荐搭配：" + plan.items.join(" + ");
+  document.getElementById("resRaw").textContent = "¥" + plan.raw.toFixed(2);
+  document.getElementById("resCoupon").textContent = plan.coupon || "无";
+  document.getElementById("resDiscount").textContent = "¥" + plan.discount.toFixed(2);
+  document.getElementById("resFinal").textContent = "¥" + plan.final.toFixed(2) + "（省 ¥" + plan.savings.toFixed(2) + "）";
+  const n = plan.nut;
+  document.getElementById("resNut").textContent = `${n.kcal} kcal ｜ 蛋白 ${n.protein}g ｜ 脂肪 ${n.fat}g ｜ 碳水 ${n.carb}g`;
+  document.getElementById("result").style.display = "block";
+});
+</script>
+</body>
+</html>
