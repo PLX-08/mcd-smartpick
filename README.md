@@ -12,7 +12,7 @@
 ## ✨ 为什么值得一看
 
 - **不让大模型"算钱"**：套餐 / 优惠券的最优解交给确定性算法（纯函数），避免模型口算出错——这是用户最痛、模型最弱的点。
-- **目标驱动，而非菜单罗列**：省钱 / 增肌 / 低卡 / 解馋四档，直接对齐用户的真实意图。
+- **目标驱动，而非菜单罗列**：省钱 / 增肌 / 低卡 / 解馋 / 儿童营养五档，直接对齐用户的真实意图。
 - **打开即跑**：`--demo` 离线模式 + `demo/index.html` 交互页，**不填 Token 也能立刻看到效果**。
 - **真连官方，且已实跑留证**：零依赖 Streamable HTTP 客户端（兼容 JSON 与 SSE 响应）对接 `https://mcp.mcd.cn`；四段链路（门店→菜单→券→计价）已真实跑通并留存官方 `traceId`，见 [`evidence-real.md`](evidence-real.md)。
 - **安全默认**：下单等交易类工具必须用户显式确认，默认只读与规划，不产生未授权订单。
@@ -31,7 +31,7 @@
 | 官方计价 | 巨无霸+中薯条+可乐 = **¥49.00**（与本地算术一致 ✅） |
 | 券后价 | 中薯条买一送一 ¥27 → **¥13.50**；王牌小食拼 ¥22 → **¥15.90** |
 
-> 完整出入参与 `traceId` 见 [`evidence-real.md`](evidence-real.md)；真实回包已固化为离线 fixtures（`tests/test_live_adapt.py`，20 项回归全绿，**无需 Token**）。
+> 完整出入参与 `traceId` 见 [`evidence-real.md`](evidence-real.md)；真实回包已固化为离线 fixtures（`tests/test_live_adapt.py`，30 项回归全绿，**无需 Token**）。
 > 一个重要发现：**门店券是"指定商品特价券品"，不是满减券**——券挂在普通商品上会被官方拒绝（`code 600012`）。本项目据此把券建模为"券品"，先逐张取券后价再参与组合优化。
 
 ---
@@ -48,14 +48,15 @@
 | 算术 | 本项目代码（纯函数） | 在预算与目标约束下做组合优化，**可复现、可测试、可审计** |
 | 表达 | Agent / `SKILL.md` | 把"省了多少、为什么这么搭"讲成人话 |
 
-四个目标模式：
+五个目标模式：
 
 | 目标 | 代码 | 一句话定义 |
 |---|---|---|
-| 省钱 | `save` | 预算内拿到最饱腹组合，叠加最优券后总价最低 |
+| 省钱 | `save` | 预算内拿到最划算的「管饱组合」：按每元饱腹性价比 (蛋白 + 0.3×热量) 最大化 |
 | 增肌高蛋白 | `protein` | 预算内最大化蛋白质总量 |
 | 低卡控糖 | `lowcal` | 预算内、热量上限内最大化"蛋白/热量"比 |
 | 解馋满足 | `crave` | 预算内最大化"解馋满足度" |
+| 儿童营养 | `kids` | 预算内兼顾蛋白(长身体)+ 钙/蔬果/维C 友好 + 控钠 |
 
 ---
 
@@ -65,13 +66,19 @@
 git clone https://github.com/PLX-08/mcd-smartpick.git
 cd mcd-smartpick
 
-python scripts/mcsmart.py --demo                        # 离线演示四个目标
-python scripts/mcsmart.py --goal protein --budget 35    # 指定目标与预算
-python tests/test_engine.py                             # 运行引擎测试
+python scripts/mcsmart.py --demo                              # 离线演示五个目标（省钱/增肌/低卡/解馋/儿童营养）
+python scripts/mcsmart.py --goal protein --budget 35          # 指定目标与预算
+python scripts/mcsmart.py --goal protein --budget 35 --exclude 辣,香菜   # 忌口排除
+python scripts/mcsmart.py --goal lowcal --budget 30 --kcal-cap 500   # 自定义热量上限（默认低卡 800）
+python scripts/mcsmart.py --goal kids --budget 40                      # 儿童营养（控钠 + 蔬果奶友好）
+python scripts/mcsmart.py --goal save --budget 30 --require-main         # 必含主餐（正餐约束：至少一份汉堡/卷）
+python scripts/mcsmart.py --goal crave --budget 25 --allow-repeat         # 可重复（约束背包：同款可点多份，如 5×圆筒）
+python scripts/mcsmart.py --diners "[{\"name\":\"A\",\"goal\":\"protein\",\"budget\":35},{\"name\":\"B\",\"goal\":\"crave\",\"budget\":25}]"  # 拼单（组队点餐）
+python tests/test_engine.py                                   # 运行引擎测试
 ```
 
 > 需要 Python 3.8+，**零第三方依赖**。
-> 也可以直接用浏览器打开 `demo/index.html`（交互式演示，无需 Token）。
+> 也可以直接用浏览器打开 `index.html` 查看完整项目展示页（含可交互演示与真实链路证据），或打开 `demo/index.html`（独立交互式演示），均**无需 Token**。
 
 ---
 
@@ -91,8 +98,8 @@ export MCD_MCP_TOKEN="你的token"          # Windows: set MCD_MCP_TOKEN=...
 python scripts/mcsmart.py --live --goal save --budget 40 --city 宁波 --keyword 天一广场
 ```
 
-完整链路：`query-nearby-stores → query-meals → query-store-coupons →（券品取券后价）→ smart_pick → calculate-price`，
-输出为 JSON，含 `store`（命中门店）、`items/items_codes`、`live_price_check`（官方核算）。
+完整链路：`query-nearby-stores → query-meals → list-nutrition-foods（官方营养覆盖近似值）→ query-store-coupons（券品取券后价）→ smart_pick → calculate-price`，
+输出为 JSON，含 `store`（命中门店）、`items/items_codes`、`nutrition_source`（营养来源：`official`=官方 / `approx`=近似值兜底）、`live_price_check`（官方核算）。
 
 环境变量：`MCD_MCP_TOKEN`（live 模式使用，也可用 `--token` 传入）。参数：`--city` / `--keyword` / `--max-items`。
 
@@ -104,29 +111,53 @@ python scripts/mcsmart.py --live --goal save --budget 40 --city 宁波 --keyword
 
 ```text
 【目标：增肌高蛋白 ｜ 预算 ¥35】
-  推荐搭配：双层吉士堡 + 猪柳麦满分
-  原价 ¥32.00，使用「满30减8」立减 ¥8.00
-  👉 实付 ¥24.00，共省 ¥8.00（约 25%）
-  营养参考：750.0 kcal ｜ 蛋白 42.0g ｜ 脂肪 39.0g ｜ 碳水 60.0g
+  推荐搭配：板烧鸡腿堡 + 猪柳麦满分
+  原价 ¥35.00，使用「满30减8」立减 ¥8.00
+  👉 实付 ¥27.00，共省 ¥8.00（约 23%）
+  营养参考：750.0 kcal ｜ 蛋白 44.0g ｜ 脂肪 34.0g ｜ 碳水 68.0g
 ```
 
 **解馋满足（预算 ¥25）：**
 
 ```text
 【目标：解馋满足 ｜ 预算 ¥25】
-  推荐搭配：圆筒冰淇淋 + 苹果派 + 薯条(中)
-  原价 ¥22.00，使用「甜品满15减5」立减 ¥5.00
-  👉 实付 ¥17.00，共省 ¥5.00（约 23%）
-  营养参考：740.0 kcal ｜ 蛋白 10.0g ｜ 脂肪 32.0g ｜ 碳水 104.0g
+  推荐搭配：薯条(大) + 苹果派 + 圆筒冰淇淋
+  原价 ¥24.00，使用「甜品满15减5」立减 ¥5.00
+  👉 实付 ¥19.00，共省 ¥5.00（约 21%）
+  营养参考：900.0 kcal ｜ 蛋白 12.0g ｜ 脂肪 40.0g ｜ 碳水 124.0g
 ```
 
 **对话式（WorkBuddy + 真实 MCP）：**
 
 > 用户：我想吃麦当劳，预算 30，要低卡的
 > 麦门聪明点：拉取门店菜单与券 → 计算 →
-> "推荐 田园脆鸡沙拉 + 纯牛奶，实付 ¥26.10，约 330 kcal、蛋白 20g，用券后比原价省约 10%。"
+> "推荐 田园脆鸡沙拉，实付 ¥16.20，约 180 kcal、蛋白 12g，用券（全场9折）后比原价省约 10%。"
 
 完整离线样例见 `demo/sample_run.md`，可交互网页演示见 `demo/index.html`（**无需 Token**）。
+
+---
+
+## 🧑‍🤝‍🧑 拼单（组队点餐）
+
+和朋友一起吃麦当劳？把每个人的「目标 + 预算」一次性交给引擎，它会：
+
+1. 先为**每个人**在各自预算内算出最优方案（`smart_pick`）；
+2. 把所有人的方案**合并成一笔订单**，用更大的合并总价去匹配**更优的券**（如满 40 减 12）；
+3. 按每个人原始金额占比**公平分摊**券后总价（末位吸收四舍五入尾差，分项合计 == 合并券后总价）；
+4. 如实给出 `total_savings_vs_alone`——拼单相比各自单独下单省了多少（**可能为负**：当个人券更优时，拼单未必更便宜，引擎会诚实告诉你）。
+
+```bash
+python scripts/mcsmart.py --diners "[{\"name\":\"A\",\"goal\":\"protein\",\"budget\":35},{\"name\":\"B\",\"goal\":\"crave\",\"budget\":25}]"
+```
+
+返回的 JSON 含：
+
+- `per_diner`：每人的独立方案（items / 原价 / 用券 / 实付 / 省多少 / 营养）；
+- `combined`：合并订单（去重餐品、数量、合并原价、命中的券、合并实付）；
+- `per_person_share`：每人分摊金额；
+- `total_savings_vs_alone`：拼单相对各自下单的省的净额（可为负）。
+
+> 纯函数 `group_pick` 在 `scripts/mcsmart.py` 中，与 `smart_pick` 一样**可复现、可测试、可审计**，且不自动下单。
 
 ---
 
@@ -150,10 +181,31 @@ A：大模型不擅长精确算术，套餐/优惠券组合极易算错。本项
 A：不会。Token 仅通过环境变量 `MCD_MCP_TOKEN` 提供，仓库内不含任何真实凭据；下单等写操作默认需用户确认。
 
 **Q：价格/营养准确吗？**
-A：**价格以官方 `calculate-price` 核算为准**（本项目已实跑验证，见 [`evidence-real.md`](evidence-real.md)）；离线示例数据为公开近似值，仅供演示。营养方面需诚实说明：官方 `query-meals` **不返回营养字段**，live 模式对常见餐品使用公开近似值兜底，营养结论请以官方 `list-nutrition-foods` 为准。
+A：**价格以官方 `calculate-price` 核算为准**（本项目已实跑验证，见 [`evidence-real.md`](evidence-real.md)）；离线示例数据为公开近似值，仅供演示。营养方面需诚实说明：官方 `query-meals` **不返回营养字段**，live 模式会优先调用 `list-nutrition-foods` 用**官方营养数据覆盖**近似值；若该接口不可用 / 不在 `tools/list` / 未返回某餐品，则对该餐品保持公开近似值兜底，并在结果中如实标注 `nutrition_source`（`official` / `approx`），营养结论请以官方数据为准。
 
 **Q：门店优惠券是怎么用的？**
 A：实测发现门店券是「**指定商品特价券品**」（如"中薯条买一送一"对应独立券品编码），**不是满减券**，挂在普通商品编码上会被官方拒绝（`code 600012`）。本项目据此把每张券转成"券品"：先调一次 `calculate-price` 拿到券后实付价，再把它作为一个候选加入组合优化——这样"用不用券、用哪张券"就变成了算法问题。
+
+**Q：可以不想要某些东西吗（比如不吃辣）？**
+A：可以。命令行用 `--exclude 辣,香菜`（逗号分隔关键词），名称或标签命中任一关键词的餐品不会进入候选池；必含项（`--required`）始终保留。在线对话中直接说"不要辣的"即可，由 Agent 转成 `exclude` 参数交给引擎。
+
+**Q：能自己定热量上限吗（比如减脂期每天只吃 500 kcal 的麦当劳）？**
+A：能。用 `--kcal-cap 500` 自定义热量上限，该限制对**所有目标**生效（默认仅 `lowcal` 目标内置 800 kcal 上限）。在线对话中说"控制在 500 大卡以内"即可由 Agent 转成 `kcal_cap` 参数，引擎会在不超预算、不超热量的前提下做组合优化。
+
+**Q：能拼单吗（和朋友一起点）？**
+A：能。用 `--diners` 传一组人（每人 `name`/`goal`/`budget` 的 JSON 数组），引擎会先为每人算最优方案，再把所有人的方案合并成一笔订单去匹配更优的券，并按各自原始金额占比公平分摊券后总价。它会如实给出 `total_savings_vs_alone`——拼单相对各自单独下单省了多少（可能为负：当个人券更优时拼单未必更便宜）。纯函数 `group_pick` 实现，可复现、可测试，且不自动下单。
+
+**Q：能给孩子点（儿童营养）吗？**
+A：能。用 `--goal kids`，引擎会在预算内优先选「蛋白质充足（长身体）+ 钙/蔬果/维C 友好 + 低钠」的搭配——评分 = 蛋白质 − 钠×0.02 + 健康友好标签数×1.5，自动避开高钠的"垃圾组合"。营养结论仍以官方 `list-nutrition-foods` 为准，本项目输出不构成专业营养建议。
+
+**Q：能要求"必须含一份主餐"吗（只要正餐、不要纯小食）？**
+A：能。命令行加 `--require-main`，引擎最终组合至少含一份 main 类餐品（汉堡/卷等），避免"只点薯条+可乐"这种不算正餐的组合。该约束对所有目标生效，默认关闭（不强制）。在线对话中说"要有一份汉堡"即可由 Agent 转成 `require_main` 参数交给引擎。
+
+**Q：能限制最多点几件吗（比如只点 2-3 样）？**
+A：能。命令行用 `--max-items 3` 限制组合最多包含几件餐品；在线演示页 `demo/index.html` 的「高级选项」里也有「最多几件」输入框，所有目标通用。引擎会先满足预算/热量/主餐等约束，再在件数上限内做组合优化。
+
+Q：能不能同款点很多份（比如买三份薯条）？
+A：能。命令行加 `--allow-repeat`（在线演示页「高级选项」勾选「同款可点多份」），引擎搜索空间由"候选池子集"扩展为"候选池多重集"（约束背包），允许同一餐品出现多次。对省钱/解馋等目标往往能得到更划算的组合（例如 `crave/25` 会选 5×圆筒冰淇淋并触发甜品券）。为防组合爆炸，单次枚举件数有安全封顶（上限 8 件，且受"预算/最便宜单品价"约束）。默认关闭，保持原行为不变。
 
 ---
 
@@ -161,6 +213,7 @@ A：实测发现门店券是「**指定商品特价券品**」（如"中薯条�
 
 ```
 mcd-smartpick/
+├── index.html                 # 可视化项目主页（Hero + 三层架构 + 五目标 + 交互 demo + 真实链路证据，打开即看）
 ├── README.md                  # 本文件
 ├── CONTEST_DECLARATION.md     # 参赛声明（官方原文，一字不改）
 ├── MCP_INTEGRATION.md         # MCP Server / Tool / 调用流程 / 业务价值 / 真实验证
@@ -176,8 +229,8 @@ mcd-smartpick/
 │   ├── index.html             # 可交互网页演示（无需 Token）
 │   └── sample_run.md          # 离线 CLI 演示输出样本
 └── tests/
-    ├── test_engine.py         # 引擎纯函数测试（零依赖，22 项）
-    └── test_live_adapt.py     # 真实 MCP 回包解析回归（零依赖，20 项）
+    ├── test_engine.py         # 引擎纯函数测试（零依赖，92 项）
+    └── test_live_adapt.py     # 真实 MCP 回包解析回归（零依赖，30 项）
 ```
 
 ---

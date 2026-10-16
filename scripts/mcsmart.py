@@ -129,18 +129,39 @@ def smart_pick(
     required: Optional[List[str]] = None,
     max_items: int = 6,
     kcal_cap: Optional[float] = None,
+    exclude: Optional[List[str]] = None,
+    require_main: bool = False,
+    allow_repeat: bool = False,
 ) -> Dict[str, Any]:
     """
     在预算与目标下选出最优餐品组合。
 
     goal:
-      save    省钱      —— 预算内获得最饱腹(蛋白/价格比)组合，叠加最优券后总价最低
+      save    省钱      —— 预算内最大化「每元饱腹性价比」(蛋白 + 0.3×热量)，拿到最划算的管饱组合
       protein 增肌高蛋白 —— 预算内最大化蛋白质总量
       lowcal  低卡控糖  —— 预算内、热量上限内最大化蛋白/热量比
       crave   解馋满足  —— 预算内最大化"解馋满足度"
+      kids    儿童营养  —— 预算内兼顾蛋白(长身体)+ 钙/蔬果/维C 友好 + 控钠
+    exclude:
+      忌口排除——名称或标签命中任一关键词的餐品不进入候选池（如 ["辣","香菜"]）。
+      仅作用于候选池；必含项（required）始终保留，命中忌口时由上层提示用户。
+    require_main:
+      必含主餐——最终组合必须至少含一份 main 类餐品（如汉堡/卷）。这是最朴素的"正餐"约束：
+      只点小食/饮品而不含主食的情形通常被用户视为"没吃饱"。默认 False（不强制）。
+    allow_repeat:
+      可重复（约束背包）——允许同一餐品点多份（如三份薯条、两杯牛奶）。开启后搜索空间由
+      "候选池子集"扩展为"候选池多重集"，对省钱/解馋等目标可得到更划算的方案。为防组合爆炸，
+      单目标枚举件数额外封顶（见搜索循环内的 rep_cap）。默认 False（不开启，保持原行为）。
     """
     required = required or []
+    exclude = exclude or []
     selected_required: List[Item] = []
+
+    def _is_excluded(it: Item) -> bool:
+        if not exclude:
+            return False
+        blob = (it.name + " " + " ".join(it.tags)).lower()
+        return any(k.strip().lower() in blob for k in exclude if k.strip())
 
     # (1) 必须包含的项优先保留（不参与搜索，始终入选）
     for code in required:
@@ -148,26 +169,40 @@ def smart_pick(
         if it and it not in selected_required:
             selected_required.append(it)
 
-    # (2) 候选池（排除必含项）
-    pool = [i for i in items if i not in selected_required]
+    # (2) 候选池（排除必含项与忌口项）
+    pool = [i for i in items if i not in selected_required and not _is_excluded(i)]
 
     base_price = sum(i.price for i in selected_required)
     base_kcal = sum(i.nutrition.kcal for i in selected_required)
 
-    # (3) 约束内组合搜索：枚举所有「必含项 + 候选池子集」满足约束的组合，
+    # (3) 约束内组合搜索：枚举所有「必含项 + 候选池组合」满足约束的组合，
     #     按目标打分取最优。相比贪心，能避免预算碎片/顺序导致的次优（如 ratio 相同时选错）。
+    #     allow_repeat=True 时由「候选池子集」扩展为「候选池多重集」(combinations_with_replacement)，
+    #     即允许同一餐品点多份（约束背包）。为防组合爆炸，单目标枚举件数封顶 rep_cap：
+    #     ① 最多 8 件（避免大 max_items 时组合数失控）；② 同时受「预算 / 最便宜单品价」约束。
     max_extra = max(0, max_items - len(selected_required))
+    rep_cap = max_extra
+    if allow_repeat:
+        rep_cap = min(max_extra, 8)
+        cheapest = min((i.price for i in pool), default=0.0)
+        if cheapest > 0:
+            rep_cap = min(rep_cap, int(budget // cheapest))
     best: Optional[tuple] = None
     best_key = None
 
-    for k in range(0, max_extra + 1):
-        for combo in itertools.combinations(pool, k):
+    for k in range(0, rep_cap + 1):
+        combos = (itertools.combinations_with_replacement(pool, k)
+                  if allow_repeat else itertools.combinations(pool, k))
+        for combo in combos:
             sel = selected_required + list(combo)
             raw = sum(i.price for i in sel)
             if raw > budget + 1e-9:
                 continue
             kcal = base_kcal + sum(i.nutrition.kcal for i in combo)
             if kcal_cap is not None and kcal > kcal_cap + 1e-9:
+                continue
+            # 必含主餐约束：最终组合必须至少含一份 main 类餐品
+            if require_main and not any(i.category == "main" for i in sel):
                 continue
             cats = {i.category for i in sel}
             coupon = best_coupon(raw, coupons, cats)
@@ -234,16 +269,130 @@ def _objective_key(goal: str, sel: List[Item], final: float) -> tuple:
         # 预算内最大化蛋白质，其次尽量便宜、尽量精简
         return (prot, -final, -len(sel))
     if goal == "save":
-        # 与 protein 同目标取向：最饱腹 + 最省钱（演示四目标中二者侧重"性价比"）
-        return (prot, -final, -len(sel))
+        # 省钱/性价比：预算内最大化「每元饱腹性价比」——
+        # 以 蛋白 + 0.3×热量 近似"管饱价值"（热量代表份量/饱腹，0.3 为经验权重），
+        # 价值越高越划算；同价值优先更便宜、件数更少。与 protein（只追蛋白）明确区分。
+        kcal = sum(i.nutrition.kcal for i in sel)
+        return (prot + 0.3 * kcal, -final, -len(sel))
     if goal == "lowcal":
         kcal = sum(i.nutrition.kcal for i in sel)
         ratio = prot / kcal if kcal > 0 else 0.0
         return (ratio, -final, -len(sel))
+    if goal == "kids":
+        # 儿童营养：在预算内兼顾「蛋白质(长身体) + 钙/蔬果/维C 友好 + 控钠」。
+        # 评分 = 蛋白×1.0 − 钠×0.02 + 健康友好标签数(命中 健康/蔬菜/水果/牛奶/维C)×1.5，
+        # 同分时优先更便宜、件数更少（与既有目标一致）。
+        sodium = sum(i.nutrition.sodium for i in sel)
+        healthy_tags = sum(
+            1 for i in sel for t in i.tags
+            if t in ("健康", "蔬菜", "水果", "牛奶", "维C")
+        )
+        score = prot - sodium * 0.02 + healthy_tags * 1.5
+        return (score, -final, -len(sel))
     if goal == "crave":
         c = sum(i.crave for i in sel)
         return (c, -final, -len(sel))
     raise ValueError(f"未知目标: {goal}")
+
+
+# ============================================================
+# 4b. 拼单（组队点餐，纯函数，可测试）
+# ============================================================
+def group_pick(
+    diners: List[Dict[str, Any]],
+    items: List[Item],
+    coupons: List[Coupon],
+    max_items: int = 6,
+    exclude: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    拼单（组队点餐）：为一组人各自按目标与预算生成方案，
+    再把所有方案合并为一笔订单——用更大的合并总价去匹配更优的券，
+    并按每人原始金额占比公平分摊券后总价（最后一人吸收四舍五入尾差）。
+
+    设计原则同 smart_pick：取数交给 MCP，算术交给代码（本纯函数），表达交给 Agent。
+    拼单不自动下单；仅做「组合 + 计账 + 分摊」的确定性计算，可复现、可测试、可审计。
+
+    diners: [{"name": str, "goal": str, "budget": float}, ...]
+    返回：
+      per_diner:  每人独立方案（items/items_codes/raw/coupon/discount/final/savings/nutrition）
+      combined:  合并后的订单（items 去重列表、quantities 数量、raw_total、coupon、discount、final_total）
+      per_person_share: 按各自原始金额占比分摊的券后总价（合计 == combined.final_total）
+      total_savings_vs_alone: 拼单相比各自单独下单省下的金额（合并券后 - 各自券后之和；可为负）
+    """
+    per: List[Dict[str, Any]] = []
+    combined_qty: Dict[str, int] = {}
+    combined_codes: List[str] = []
+
+    for d in diners:
+        goal = d["goal"]
+        budget = float(d["budget"])
+        plan = smart_pick(goal, budget, items, coupons,
+                          max_items=max_items, exclude=exclude)
+        per.append({
+            "name": d.get("name", goal),
+            "goal": goal,
+            "items": plan["items"],
+            "items_codes": plan["items_codes"],
+            "raw": plan["raw_total"],
+            "coupon": plan["coupon"],
+            "discount": plan["discount"],
+            "final": plan["final_total"],
+            "savings": plan["savings"],
+            "nutrition": plan["nutrition"],
+        })
+        for code in plan["items_codes"]:
+            if code not in combined_qty:
+                combined_qty[code] = 0
+                combined_codes.append(code)
+            combined_qty[code] += 1
+
+    price_of = {i.code: i.price for i in items}
+    raw_total = sum(price_of.get(c, 0.0) * q for c, q in combined_qty.items())
+
+    cats: set = set()
+    for c in combined_codes:
+        it = next((i for i in items if i.code == c), None)
+        if it:
+            cats.add(it.category)
+    coupon = best_coupon(raw_total, coupons, cats)
+    discount = 0.0
+    if coupon:
+        discount = coupon.value if coupon.kind == "amount" else raw_total * coupon.value / 100.0
+        discount = min(discount, raw_total)
+    final_total = max(raw_total - discount, 0.0)
+
+    sum_raw = sum(p["raw"] for p in per)
+    shares: List[float] = []
+    allocated = 0.0
+    n = len(per)
+    for idx, p in enumerate(per):
+        if sum_raw <= 0 or n == 0:
+            share = round(final_total / n, 2) if n else 0.0
+        else:
+            share = round(final_total * p["raw"] / sum_raw, 2)
+        if idx == n - 1:
+            share = round(final_total - allocated, 2)  # 末位吸收尾差，保证合计=券后总价
+        else:
+            allocated += share
+        shares.append(share)
+
+    alone_total = sum(p["final"] for p in per)
+    total_savings_vs_alone = round(final_total - alone_total, 2)
+
+    return {
+        "per_diner": per,
+        "combined": {
+            "items": combined_codes,
+            "quantities": combined_qty,
+            "raw_total": round(raw_total, 2),
+            "coupon": coupon.name if coupon else None,
+            "discount": round(discount, 2),
+            "final_total": round(final_total, 2),
+        },
+        "per_person_share": shares,
+        "total_savings_vs_alone": total_savings_vs_alone,
+    }
 
 
 # ============================================================
@@ -538,6 +687,45 @@ def _adapt_deal_items(client: "McDMCPClient", store_code: str, coupons: Any,
     return deal_items, deal_of
 
 
+def _adapt_nutrition(foods: Any) -> Dict[str, Nutrition]:
+    """
+    把 list-nutrition-foods 回包规整为 {餐品名: Nutrition}。
+    官方工具返回能量/蛋白/脂肪/碳水/钠/钙等字段，命名可能多样，本函数做宽松匹配；
+    取不到的字段记为 0。仅用于「覆盖」近似值，取不到不强制（保持近似值兜底）。
+    """
+    biz = _unwrap_mcp_result(foods)
+    data = biz.get("data") or []
+    if isinstance(data, dict):
+        data = [data]
+    out: Dict[str, Nutrition] = {}
+
+    def _num(rec: Dict[str, Any], *keys: str) -> float:
+        for k in keys:
+            v = rec.get(k)
+            if v is None or v == "":
+                continue
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    for f in data:
+        if not isinstance(f, dict):
+            continue
+        name = f.get("name") or f.get("foodName") or f.get("productName") or f.get("mealName")
+        if not name:
+            continue
+        out[name] = Nutrition(
+            kcal=_num(f, "kcal", "energy", "calorie", "热量", "能量"),
+            protein=_num(f, "protein", "蛋白"),
+            fat=_num(f, "fat", "脂肪"),
+            carb=_num(f, "carb", "carbohydrate", "碳水", "碳水化合物"),
+            sodium=_num(f, "sodium", "钠"),
+        )
+    return out
+
+
 def live_pick(
     client: "McDMCPClient",
     goal: str,
@@ -545,11 +733,18 @@ def live_pick(
     city: str = "上海",
     keyword: str = "",
     max_items: int = 6,
+    exclude: Optional[List[str]] = None,
+    kcal_cap: Optional[float] = None,
+    require_main: bool = False,
+    allow_repeat: bool = False,
 ) -> Dict[str, Any]:
     """
     真实链路（需 Token）：
-      附近门店 -> 门店菜单 -> 门店券（转「券品」并逐张取券后价） -> 组合优化 -> 官方计价复核。
-    返回与 smart_pick 同构的方案，并附 store / live_price_check / 建模说明。
+      附近门店 -> 门店菜单 -> list-nutrition-foods（官方营养覆盖近似值）-> 门店券（转「券品」并逐张取券后价）-> 组合优化 -> 官方计价复核。
+    返回与 smart_pick 同构的方案，并附 store / nutrition_source（official=官方 / approx=近似值兜底）/ live_price_check / 建模说明。
+
+    kcal_cap: 自定义热量上限（kcal）。传此值则对所有目标生效；不传时仅 lowcal 目标默认 800。
+      与离线模式（--kcal-cap）行为保持一致，CLI 会把 --kcal-cap 原样透传进来。
     """
     client.initialize()
 
@@ -564,8 +759,26 @@ def live_pick(
     coupons_raw = client.call_tool("query-store-coupons", {"storeCode": store_code, "orderType": 1, "beType": 1})
     deal_items, deal_of = _adapt_deal_items(client, store_code, coupons_raw)
 
+    # 真实营养：优先用 list-nutrition-foods 官方营养数据覆盖近似值；
+    # 接口不可用 / 不在 tools/list / 不返回某餐品时，对该餐品保持公开近似值兜底
+    # （绝不因取值失败而中断链路：用 try/except 兜底）。
+    nutrition_source = "approx"
+    try:
+        nut_raw = client.call_tool("list-nutrition-foods", {})
+        nut_map = _adapt_nutrition(nut_raw)
+        if nut_map:
+            for it in items:
+                if it.name in nut_map:
+                    it.nutrition = nut_map[it.name]
+            nutrition_source = "official"
+    except Exception:
+        pass
+
+    # 自定义热量上限优先；不传时仅 lowcal 目标默认 800（与离线模式 --kcal-cap 行为一致）
+    eff_kcal_cap = kcal_cap if kcal_cap is not None else (800 if goal == "lowcal" else None)
     plan = smart_pick(goal, budget, items + deal_items, [], max_items=max_items,
-                      kcal_cap=800 if goal == "lowcal" else None)
+                      kcal_cap=eff_kcal_cap, exclude=exclude, require_main=require_main,
+                      allow_repeat=allow_repeat)
 
     # 官方计价复核：把命中的「券品」带上 couponId/couponCode 再算一遍
     order_items: List[Dict[str, Any]] = []
@@ -581,6 +794,7 @@ def live_pick(
         plan["live_price_check"] = _unwrap_mcp_result(price_check)
 
     plan["store"] = store
+    plan["nutrition_source"] = nutrition_source
     plan["model_note"] = (
         "门店券按『券品』建模：逐张 calculate-price 取券后价后纳入候选池；"
         "query-meals 不含营养字段，营养使用公开近似值兜底。真实金额以 calculate-price 为准。"
@@ -596,6 +810,7 @@ GOAL_CN = {
     "protein": "增肌高蛋白",
     "lowcal": "低卡控糖",
     "crave": "解馋满足",
+    "kids": "儿童营养",
 }
 
 
@@ -621,6 +836,7 @@ def demo() -> str:
         ("protein", 35.0, []),
         ("lowcal", 30.0, []),
         ("crave", 25.0, []),
+        ("kids", 40.0, []),
     ]
     for goal, budget, req in cases:
         plan = smart_pick(goal, budget, items, coupons,
@@ -636,18 +852,34 @@ def demo() -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description="McSmartPick 麦门聪明点")
     p.add_argument("--demo", action="store_true", help="离线演示（无需 Token）")
-    p.add_argument("--goal", default="protein", choices=["save", "protein", "lowcal", "crave"])
+    p.add_argument("--goal", default="protein", choices=["save", "protein", "lowcal", "crave", "kids"])
     p.add_argument("--budget", type=float, default=30.0, help="预算（元）")
     p.add_argument("--required", default="", help="必含餐品 code，逗号分隔，如 M1,S1,D1")
+    p.add_argument("--exclude", default="", help="忌口排除关键词，逗号分隔（命中名称/标签的餐品不进候选池），如 辣,香菜")
     p.add_argument("--live", action="store_true", help="调用真实麦当劳 MCP（需 Token）")
     p.add_argument("--token", default=None, help="MCP Token（或读环境变量 MCD_MCP_TOKEN）")
     p.add_argument("--city", default="上海", help="live 模式：门店所在城市（如 宁波）")
     p.add_argument("--keyword", default="", help="live 模式：位置关键词（如 天一广场）")
     p.add_argument("--max-items", type=int, default=6, help="组合最多包含几件餐品")
+    p.add_argument("--kcal-cap", type=float, default=None,
+                   help="自定义热量上限（kcal）。不设时仅 lowcal 目标默认 800；该值对所有目标生效，便于控糖/减脂自定义")
+    p.add_argument("--require-main", action="store_true",
+                   help="必含主餐：最终组合必须至少含一份主餐（汉堡/卷等 main 类），避免只点小食饮品")
+    p.add_argument("--allow-repeat", action="store_true",
+                   help="可重复（约束背包）：允许同一餐品点多份（如三份薯条），搜索空间扩展为多重集，更划算但略慢")
+    p.add_argument("--diners", default=None,
+                   help="拼单（组队点餐）：JSON 数组，如 "
+                        "[{\"name\":\"A\",\"goal\":\"protein\",\"budget\":35},"
+                        "{\"name\":\"B\",\"goal\":\"crave\",\"budget\":25}]")
     p.add_argument("--tool", default=None, help="live 模式直接调用某工具，如 query-meals")
     p.add_argument("--args", default="{}", help="live 工具参数 JSON")
     p.add_argument("--out", default=None, help="将离线演示写入指定文件（UTF-8）")
     args = p.parse_args()
+
+    # 提前解析必含项与忌口排除，供 live / 拼单 / 离线各分支统一使用
+    # （注意：live 分支会引用 exclude，必须在 if args.live 之前完成解析，否则触发 NameError）
+    required = [c.strip() for c in args.required.split(",") if c.strip()]
+    exclude = [c.strip() for c in args.exclude.split(",") if c.strip()]
 
     if args.demo:
         text = demo()
@@ -673,13 +905,29 @@ def main() -> None:
             print(json.dumps(res, ensure_ascii=False, indent=2))
         else:
             out = live_pick(client, args.goal, args.budget,
-                            city=args.city, keyword=args.keyword, max_items=args.max_items)
+                            city=args.city, keyword=args.keyword, max_items=args.max_items,
+                            exclude=exclude, kcal_cap=args.kcal_cap,
+                            require_main=args.require_main, allow_repeat=args.allow_repeat)
             print(json.dumps(out, ensure_ascii=False, indent=2))
         return
 
-    required = [c.strip() for c in args.required.split(",") if c.strip()]
+    if args.diners:
+        try:
+            diners = json.loads(args.diners)
+        except Exception as e:
+            print(f"--diners 必须是合法 JSON 数组：{e}")
+            sys.exit(1)
+        out = group_pick(diners, items, coupons, max_items=args.max_items, exclude=exclude)
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return
+
     plan = smart_pick(args.goal, args.budget, items, coupons,
-                      required=required, kcal_cap=800 if args.goal == "lowcal" else None)
+                      required=required,
+                      kcal_cap=args.kcal_cap if args.kcal_cap is not None
+                      else (800 if args.goal == "lowcal" else None),
+                      exclude=exclude,
+                      require_main=args.require_main,
+                      allow_repeat=args.allow_repeat)
     print(json.dumps(plan, ensure_ascii=False, indent=2))
 
 

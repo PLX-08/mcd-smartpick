@@ -64,3 +64,44 @@
 5. **鉴权失败**：`401` 表示 Token 无效/过期/未提供，需到 open.mcd.cn/mcp 重新激活。
 6. **MCP 版本**：Server 仅支持特定 MCP 版本，客户端需兼容；本项目用标准 `initialize` 握手。
 7. **交易类工具默认禁用/需确认**：`create-order`、`auto-bind-coupons`、`mall-create-order` 等不得自动执行，必须用户显式确认。
+
+## 进阶可选链路：外送 / 积分商城 / 活动日历（调用示例）
+
+> v1 主链路只用 `query-nearby-stores` / `query-meals` / `list-nutrition-foods` / `query-store-coupons` / `calculate-price`。
+> 下面这些工具属于「锦上添花」的可选能力，默认不进入主链路；接入时务必保持主链路不变、交易类工具需用户显式确认。
+> 参数格式以官方运行时 `tools/list` 返回为准；以下示例基于本仓库 `McDMCPClient.call_tool(name, args)` 约定。
+
+### 活动日历（只读，无敏感信息）—— 帮用户顺手看当月营销活动
+```python
+client = McDMCPClient(token)  # token 来自环境变量 MCD_MCP_TOKEN
+client.initialize()
+# 返回当月营销活动（具体入参以 tools/list 为准，常见为空对象）
+cal = client.call_tool("campaign-calendar", {})
+print(cal)
+```
+
+### 麦乐送外送（只读查询）—— 切换「到店 / 外送」前先看可配送门店
+```python
+# 1) 先取已保存的配送地址（beType=2 表示外送场景）
+addr = client.call_tool("delivery-query-addresses", {"beType": 2})
+# 2) 用某个 addressId 查附近可配送门店
+stores = client.call_tool("delivery-query-stores",
+                          {"addressId": "<addressId>", "beType": 2})
+# 3) 需要新地址时（仍只读，仅建地址不建订单）：
+# client.call_tool("delivery-create-address", {"beType": 2, ...})
+```
+
+### 积分商城（只读 + 交易类需确认）—— 把「积分兑换」和「点餐」区分开
+```python
+# 只读：查积分余额、查可兑换列表
+account = client.call_tool("query-my-account", {})          # 积分余额
+goods   = client.call_tool("mall-points-products", {})      # 可兑换商品
+detail  = client.call_tool("mall-product-detail",
+                           {"productCode": "<productCode>"})
+# 交易类：积分兑换下单 —— 默认不自动执行，必须用户显式确认后再调用
+# client.call_tool("mall-create-order", {"productCode": "<productCode>", ...})
+```
+
+### 接入红线（与 SKILL.md 一致）
+- 外送 / 积分商城查询均为只读，可放心调用；
+- 涉及「下单 / 领券 / 积分兑换下单」(`create-order`、`auto-bind-coupons`、`mall-create-order`) 一律视为交易类，**默认禁用、需用户显式确认**，绝不自动执行。

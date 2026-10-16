@@ -41,6 +41,8 @@
   .foot{text-align:center;color:#9b7b4a;font-size:12px;margin-top:8px;}
   .badge{display:inline-block;background:#fff1dc;color:#e63946;border:1px solid #ffd29a;
     border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:8px;}
+  .diner-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  #diners{margin-top:4px;}
 </style>
 </head>
 <body>
@@ -57,6 +59,7 @@
       <div class="goal" data-goal="protein">增肌高蛋白<small>蛋白最大化</small></div>
       <div class="goal" data-goal="lowcal">低卡控糖<small>低热量高蛋白</small></div>
       <div class="goal" data-goal="crave">解馋满足<small>快乐最大化</small></div>
+      <div class="goal" data-goal="kids">儿童营养<small>蛋白+蔬果奶·控钠</small></div>
     </div>
     <div class="row">
       <label>预算</label>
@@ -64,6 +67,62 @@
       <span class="budget-val">¥<span id="budgetVal">30</span></span>
     </div>
     <button class="go" id="go">🤖 帮我聪明点</button>
+  </div>
+
+  <div class="card">
+    <div class="badge">一键示例（点一下场景，立刻看引擎怎么搭）</div>
+    <div class="goals" id="presets">
+      <div class="goal" data-preset="save" data-budget="30">学生党省钱<small>省钱·预算30</small></div>
+      <div class="goal" data-preset="protein" data-budget="35">健身增肌<small>高蛋白·预算35</small></div>
+      <div class="goal" data-preset="lowcal" data-budget="30">减脂低卡<small>低卡·预算30</small></div>
+      <div class="goal" data-preset="crave" data-budget="25">解馋小确幸<small>解馋·预算25</small></div>
+      <div class="goal" data-preset="kids" data-budget="40">带娃儿童餐<small>儿童营养·预算40</small></div>
+      <div class="goal" data-group-preset='[{"name":"室友A","goal":"protein","budget":35},{"name":"室友B","goal":"crave","budget":25},{"name":"学妹C","goal":"kids","budget":40}]'>朋友聚会拼单<small>三人·各取所需</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="badge">高级选项（可选，展示引擎已支持的约束）</div>
+    <div class="row">
+      <label>必含餐品</label>
+      <input type="text" id="required" placeholder="餐品编码，逗号分隔，如 M1,S1,D1"
+        style="flex:1;padding:8px;border:1px solid #ffe0b3;border-radius:10px;font-size:14px;" />
+    </div>
+    <div class="row">
+      <label>忌口排除</label>
+      <input type="text" id="exclude" placeholder="关键词，逗号分隔，如 辣,香菜"
+        style="flex:1;padding:8px;border:1px solid #ffe0b3;border-radius:10px;font-size:14px;" />
+    </div>
+    <div class="row">
+      <label>热量上限</label>
+      <input type="number" id="kcalCap" min="0" step="10" placeholder="kcal，留空则低卡默认 800"
+        style="flex:1;padding:8px;border:1px solid #ffe0b3;border-radius:10px;font-size:14px;" />
+    </div>
+    <div class="row">
+      <label>必含主餐</label>
+      <label style="flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:#8a6d3b;cursor:pointer;">
+        <input type="checkbox" id="requireMain" /> 只要正餐（至少一份汉堡/卷，不要纯小食）
+      </label>
+    </div>
+    <div class="row">
+      <label>最多几件</label>
+      <input type="number" id="maxItems" min="1" max="10" step="1" value="6"
+        style="flex:1;padding:8px;border:1px solid #ffe0b3;border-radius:10px;font-size:14px;" />
+    </div>
+    <div class="row">
+      <label>可重复</label>
+      <label style="flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:#8a6d3b;cursor:pointer;">
+        <input type="checkbox" id="allowRepeat" /> 同款可点多份（约束背包，更划算）
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="badge">组队拼单（可选，展示引擎 group_pick 能力）</div>
+    <p style="font-size:13px;color:#8a6d3b;margin:0 0 10px;line-height:1.5;">为多人各自按目标/预算生成方案，再合并成一笔订单用更大总价匹配更优券，按各自原始金额占比公平分摊（末位吸收尾差）。复用上方"忌口排除"约束。</p>
+    <div id="diners"></div>
+    <button type="button" id="addDiner" style="margin-top:10px;padding:8px 14px;border:1px solid #ffd29a;border-radius:10px;background:#fffaf2;color:#e63946;font-weight:600;cursor:pointer;">＋ 添加成员</button>
+    <button class="go" id="goGroup" style="margin-top:12px;">👥 拼单结算</button>
   </div>
 
   <div class="card result" id="result">
@@ -74,6 +133,12 @@
     <div class="line"><span>立减</span><span class="save" id="resDiscount"></span></div>
     <div class="line"><span>👉 实付</span><span class="save" id="resFinal"></span></div>
     <div class="line nut"><span>营养参考</span><span id="resNut"></span></div>
+    <div class="line nut" id="resMeta"></div>
+  </div>
+
+  <div class="card result" id="groupResult">
+    <h2 id="grpTitle">组队拼单结果</h2>
+    <div id="grpBody"></div>
   </div>
 
   <div class="foot">本项目为麦当劳中国 1024 程序员节创意开发大赛参赛作品，非官方产品。真实餐品/价格/营养以麦当劳官方实时数据为准。</div>
@@ -109,7 +174,7 @@ const COUPONS = [
   {id:"C3",name:"全场9折",kind:"percent",value:10,min:0,scope:"all"},
   {id:"C4",name:"甜品满15减5",kind:"amount",value:5,min:15,scope:"dessert"},
 ];
-const GOAL_CN = {save:"省钱", protein:"增肌高蛋白", lowcal:"低卡控糖", crave:"解馋满足"};
+const GOAL_CN = {save:"省钱", protein:"增肌高蛋白", lowcal:"低卡控糖", crave:"解馋满足", kids:"儿童营养"};
 
 // ---------- 引擎（与 Python scripts/mcsmart.py 的 smart_pick 同逻辑：约束内组合搜索）----------
 // 说明：与引擎严格对齐——枚举预算/热量/件数约束下的所有合法组合，按目标打分取最优，
@@ -127,7 +192,13 @@ function bestCoupon(total, cats){
 }
 function objectiveKey(goal, sel, final){
   const prot = sel.reduce((s,i)=>s+i.n.protein,0);
-  if(goal==="protein" || goal==="save") return [prot, -final, -sel.length];
+  if(goal==="protein") return [prot, -final, -sel.length];
+  if(goal==="save"){
+    // 省钱/性价比：与 Python _objective_key 的 save 分支严格一致
+    // 价值 = 蛋白 + 0.3×热量（热量近似"份量/饱腹"，0.3 为经验权重），越大越划算
+    const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
+    return [prot + 0.3*kcal, -final, -sel.length];
+  }
   if(goal==="lowcal"){
     const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
     return [kcal>0 ? prot/kcal : 0, -final, -sel.length];
@@ -135,6 +206,14 @@ function objectiveKey(goal, sel, final){
   if(goal==="crave"){
     const c = sel.reduce((s,i)=>s+i.crave,0);
     return [c, -final, -sel.length];
+  }
+  if(goal==="kids"){
+    // 与 Python _objective_key 的 kids 分支严格一致：
+    // 评分 = 蛋白×1.0 − 钠×0.02 + 健康友好标签数(健康/蔬菜/水果/牛奶/维C)×1.5，同分优先便宜、少件
+    const sodium = sel.reduce((s,i)=>s+i.n.sodium,0);
+    const healthy = sel.reduce((s,i)=>s+i.tags.filter(t=>["健康","蔬菜","水果","牛奶","维C"].includes(t)).length,0);
+    const score = prot - sodium*0.02 + healthy*1.5;
+    return [score, -final, -sel.length];
   }
   throw new Error("未知目标: " + goal);
 }
@@ -154,15 +233,40 @@ function combinations(arr, k){      // 与 Python itertools.combinations 的枚�
   pick(0, []);
   return res;
 }
-function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null){
+function combinationsWithReplacement(arr, k){   // 与 Python itertools.combinations_with_replacement 一致（允许同款多份）
+  const res=[];
+  const pick=(start, cur)=>{
+    if(cur.length===k){ res.push(cur.slice()); return; }
+    for(let i=start;i<arr.length;i++){ cur.push(arr[i]); pick(i, cur); cur.pop(); }  // 注意：start=i 而非 i+1，允许重复取同一项
+  };
+  pick(0, []);
+  return res;
+}
+function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null, exclude=[], requireMain=false, allowRepeat=false){
   // (1) 必含项优先保留（不参与搜索，始终入选）
   const selReq = [];
   for(const code of required){
     const it = ITEMS.find(i=>i.code===code);
     if(it && !selReq.includes(it)) selReq.push(it);
   }
-  const pool = ITEMS.filter(i=>!selReq.includes(i));
+  // 忌口排除：名称或标签命中任一关键词的餐品不进候选池（与 Python smart_pick 一致）
+  const isExcluded = (it)=>{
+    if(!exclude || !exclude.length) return false;
+    const blob = (it.name + " " + it.tags.join(" ")).toLowerCase();
+    return exclude.some(k=>{ const t = k.trim().toLowerCase(); return t && blob.includes(t); });
+  };
+  const pool = ITEMS.filter(i=>!selReq.includes(i) && !isExcluded(i));
   const maxExtra = Math.max(0, maxItems - selReq.length);
+
+  // 可重复（约束背包）：允许同一餐品点多份。为防组合爆炸，单目标枚举件数封顶 repCap：
+  // ① 最多 8 件；② 同时受「预算 / 最便宜单品价」约束（与 Python smart_pick 的 rep_cap 一致）。
+  let repCap = maxExtra;
+  if(allowRepeat){
+    repCap = Math.min(maxExtra, 8);
+    let cheapest = Infinity;
+    for(const it of pool) if(it.price < cheapest) cheapest = it.price;
+    if(cheapest > 0 && isFinite(cheapest)) repCap = Math.min(repCap, Math.floor(budget / cheapest));
+  }
 
   // (2) 约束内组合搜索：枚举所有合法组合，按目标打分取最优
   let best=null, bestKey=null;
@@ -171,6 +275,7 @@ function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null){
     if(raw > budget + 1e-9) return;                                  // 预算约束
     const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
     if(kcalCap!==null && kcal > kcalCap + 1e-9) return;             // 热量上限约束
+    if(requireMain && !sel.some(i=>i.cat==="main")) return;        // 必含主餐约束：至少一份 main
     const cats = new Set(sel.map(i=>i.cat));
     const {coupon, discount} = bestCoupon(raw, cats);                // 券门槛 + 作用域
     const final = Math.max(raw - discount, 0);
@@ -180,8 +285,9 @@ function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null){
       bestKey = key;
     }
   };
-  for(let k=0;k<=maxExtra;k++){
-    for(const combo of combinations(pool, k)){
+  for(let k=0;k<=repCap;k++){
+    const gen = allowRepeat ? combinationsWithReplacement(pool, k) : combinations(pool, k);
+    for(const combo of gen){
       consider(selReq.concat(combo));
     }
   }
@@ -199,7 +305,7 @@ function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null){
   const nut = sel.reduce((s,i)=>({kcal:s.kcal+i.n.kcal,protein:s.protein+i.n.protein,
     fat:s.fat+i.n.fat,carb:s.carb+i.n.carb,sodium:s.sodium+i.n.sodium}),
     {kcal:0,protein:0,fat:0,carb:0,sodium:0});
-  return {goal,items:sel.map(i=>i.name),raw:raw,coupon:coupon?coupon.name:null,
+  return {goal,items:sel.map(i=>i.name),codes:sel.map(i=>i.code),raw:raw,coupon:coupon?coupon.name:null,
     discount:discount,final:final,savings:raw-final,nut:nut};
 }
 
@@ -213,18 +319,190 @@ document.querySelectorAll(".goal").forEach(el=>{
 });
 const budget = document.getElementById("budget");
 budget.addEventListener("input",()=>document.getElementById("budgetVal").textContent=budget.value);
-document.getElementById("go").addEventListener("click",()=>{
-  const plan = smartPick(curGoal, parseFloat(budget.value), [], 6, curGoal==="lowcal"?800:null);
+function runSinglePick(){
+  const reqVal = document.getElementById("required").value.trim();
+  const reqCodes = reqVal ? reqVal.split(",").map(s=>s.trim()).filter(Boolean) : [];
+  const exVal = document.getElementById("exclude").value.trim();
+  const exList = exVal ? exVal.split(",").map(s=>s.trim()).filter(Boolean) : [];
+  const kcalVal = document.getElementById("kcalCap").value.trim();
+  const kcalCap = (kcalVal && !isNaN(parseFloat(kcalVal))) ? parseFloat(kcalVal) : null;
+  if(kcalCap===null && curGoal==="lowcal") kcalCap = 800;   // 低卡默认 800，与原行为一致
+  const rmEl = document.getElementById("requireMain");
+  const requireMain = rmEl ? rmEl.checked : false;          // 必含主餐（与 Python smart_pick 对齐）
+  const arEl = document.getElementById("allowRepeat");
+  const allowRepeat = arEl ? arEl.checked : false;          // 可重复：同款可点多份（约束背包）
+  const miVal = document.getElementById("maxItems").value.trim();
+  const maxItems = (miVal && !isNaN(parseInt(miVal, 10))) ? parseInt(miVal, 10) : 6;  // 件数上限（与 --max-items 对齐）
+
+  const plan = smartPick(curGoal, parseFloat(budget.value), reqCodes, maxItems, kcalCap, exList, requireMain, allowRepeat);
   document.getElementById("resTitle").textContent = `目标：${GOAL_CN[plan.goal]} ｜ 预算 ¥${budget.value}`;
-  document.getElementById("resCombo").textContent = "推荐搭配：" + plan.items.join(" + ");
+  document.getElementById("resCombo").textContent = "推荐搭配：" + (plan.items.length?plan.items.join(" + "):"（无可行组合）");
   document.getElementById("resRaw").textContent = "¥" + plan.raw.toFixed(2);
   document.getElementById("resCoupon").textContent = plan.coupon || "无";
   document.getElementById("resDiscount").textContent = "¥" + plan.discount.toFixed(2);
   document.getElementById("resFinal").textContent = "¥" + plan.final.toFixed(2) + "（省 ¥" + plan.savings.toFixed(2) + "）";
   const n = plan.nut;
   document.getElementById("resNut").textContent = `${n.kcal} kcal ｜ 蛋白 ${n.protein}g ｜ 脂肪 ${n.fat}g ｜ 碳水 ${n.carb}g`;
+  // 展示已生效的约束（便于用户核对，与 CLI 参数一一对应）
+  const meta = [];
+  if(reqCodes.length) meta.push("必含：" + reqCodes.join("/"));
+  if(exList.length) meta.push("忌口排除：" + exList.join("/"));
+  if(kcalCap!==null) meta.push("热量上限：" + kcalCap + " kcal");
+  if(requireMain) meta.push("必含主餐");
+  if(allowRepeat) meta.push("同款可重复");
+  if(maxItems !== 6) meta.push("最多 " + maxItems + " 件");
+  document.getElementById("resMeta").textContent = meta.length ? meta.join(" ｜ ") : "（无额外约束）";
   document.getElementById("result").style.display = "block";
+}
+
+document.getElementById("go").addEventListener("click", runSinglePick);
+
+// 一键示例：预置场景，点一下就跑引擎，方便评委/用户秒懂（复用上方 runSinglePick）
+document.querySelectorAll("#presets .goal[data-preset]").forEach(el=>{
+  el.addEventListener("click",()=>{
+    curGoal = el.dataset.preset;
+    const b = el.dataset.budget;
+    // 同步主目标选择器的高亮状态，保证 UI 与引擎目标一致
+    document.querySelectorAll("#goals .goal").forEach(x=>{
+      x.classList.toggle("active", x.dataset.goal === curGoal);
+    });
+    budget.value = b;
+    document.getElementById("budgetVal").textContent = b;
+    document.getElementById("required").value = "";
+    document.getElementById("exclude").value = "";
+    document.getElementById("kcalCap").value = "";
+    document.getElementById("requireMain").checked = false;
+    document.getElementById("allowRepeat").checked = false;
+    document.getElementById("maxItems").value = "6";
+    runSinglePick();
+  });
 });
+
+// 一键示例：拼单（组队点餐）预设——点一下即填好成员并结算，便于评委/用户秒懂 group_pick
+// （与上方单点预设互补：本轮新增，复用既有的 makeDinerRow / goGroup / groupPick）
+document.querySelectorAll("#presets .goal[data-group-preset]").forEach(el=>{
+  el.addEventListener("click",()=>{
+    const diners = JSON.parse(el.dataset.groupPreset);
+    const box = document.getElementById("diners");
+    box.innerHTML = "";                                   // 清空默认成员，改用预设阵容
+    diners.forEach(d=>box.appendChild(makeDinerRow(d.name, d.goal, d.budget)));
+    document.getElementById("exclude").value = "";         // 预设自带方案，清空全局忌口避免冲突
+    document.getElementById("allowRepeat").checked = false; // 预设自带方案，恢复默认（不可重复）
+    document.getElementById("maxItems").value = "6";       // 预设自带方案，恢复默认件数上限
+    document.getElementById("goGroup").click();            // 触发拼单结算（复用 groupPick）
+  });
+});
+
+// ---------- 组队拼单（与 Python group_pick 同逻辑，纯前端复刻）----------
+function groupPick(diners, exclude=[], maxItems=6){
+  const per = [];
+  const combinedQty = {};
+  const combinedCodes = [];
+  for(const d of diners){
+    const plan = smartPick(d.goal, d.budget, [], maxItems, null, exclude);
+    per.push({name:d.name, goal:d.goal, items:plan.items, codes:plan.codes,
+      raw:plan.raw, coupon:plan.coupon, discount:plan.discount, final:plan.final,
+      savings:plan.savings, nut:plan.nut});
+    for(const code of plan.codes){
+      if(!combinedQty[code]){ combinedQty[code]=0; combinedCodes.push(code); }
+      combinedQty[code]++;
+    }
+  }
+  const priceOf = {}; ITEMS.forEach(i=>priceOf[i.code]=i.price);
+  let rawTotal = 0; combinedCodes.forEach(c=>{ rawTotal += (priceOf[c]||0)*combinedQty[c]; });
+  const cats = new Set();
+  combinedCodes.forEach(c=>{ const it = ITEMS.find(i=>i.code===c); if(it) cats.add(it.cat); });
+  const {coupon, discount} = bestCoupon(rawTotal, cats);     // 合并后用更大总价匹配更优券
+  let finalTotal = Math.max(rawTotal - discount, 0);
+  const sumRaw = per.reduce((s,p)=>s+p.raw,0);
+  const shares=[]; let allocated=0; const n=per.length;
+  per.forEach((p,idx)=>{                                  // 按各自原始金额占比公平分摊（末位吸收尾差）
+    let share;
+    if(sumRaw<=0 || n===0){ share = n ? Math.round(finalTotal/n*100)/100 : 0; }
+    else { share = Math.round(finalTotal*p.raw/sumRaw*100)/100; }
+    if(idx===n-1){ share = Math.round((finalTotal-allocated)*100)/100; }
+    else { allocated += share; }
+    shares.push(share);
+  });
+  const aloneTotal = per.reduce((s,p)=>s+p.final,0);
+  const savingsVsAlone = Math.round((finalTotal-aloneTotal)*100)/100;  // 诚实体现"拼单未必更便宜"
+  return {per, combined:{codes:combinedCodes, qty:combinedQty, rawTotal:Math.round(rawTotal*100)/100,
+    coupon:coupon?coupon.name:null, discount:Math.round(discount*100)/100, finalTotal:Math.round(finalTotal*100)/100},
+    shares, savingsVsAlone};
+}
+
+function makeDinerRow(name, goal, budget){
+  const row = document.createElement("div");
+  row.className = "diner-row";
+  row.innerHTML =
+    '<input class="d-name" type="text" placeholder="昵称" value="'+(name||"")+'" style="width:84px;padding:6px;border:1px solid #ffe0b3;border-radius:8px;font-size:13px;" />' +
+    '<select class="d-goal" style="padding:6px;border:1px solid #ffe0b3;border-radius:8px;font-size:13px;">' +
+      '<option value="save">省钱</option><option value="protein">增肌高蛋白</option>' +
+      '<option value="lowcal">低卡控糖</option><option value="crave">解馋满足</option>' +
+      '<option value="kids">儿童营养</option></select>' +
+    '<span style="font-size:13px;">预算¥</span>' +
+    '<input class="d-budget" type="number" min="10" step="1" value="'+(budget||35)+'" style="width:70px;padding:6px;border:1px solid #ffe0b3;border-radius:8px;font-size:13px;" />' +
+    '<button type="button" class="d-del" style="border:0;background:none;color:#e63946;cursor:pointer;font-size:16px;">✕</button>';
+  row.querySelector(".d-goal").value = goal || "protein";
+  row.querySelector(".d-del").addEventListener("click", ()=>{ row.remove(); });
+  return row;
+}
+
+(function initDiners(){
+  const box = document.getElementById("diners");
+  box.appendChild(makeDinerRow("A", "protein", 35));
+  box.appendChild(makeDinerRow("B", "crave", 25));
+  document.getElementById("addDiner").addEventListener("click", ()=>{
+    document.getElementById("diners").appendChild(makeDinerRow("", "save", 30));
+  });
+  document.getElementById("goGroup").addEventListener("click", ()=>{
+    const rows = Array.from(document.querySelectorAll("#diners .diner-row"));
+    if(!rows.length){ alert("请至少添加一位成员"); return; }
+    const diners = [];
+    for(const r of rows){
+      const name = (r.querySelector(".d-name").value||"").trim() || ("成员"+(diners.length+1));
+      const goal = r.querySelector(".d-goal").value;
+      let budget = parseFloat(r.querySelector(".d-budget").value);
+      if(isNaN(budget) || budget<0) budget = 30;
+      diners.push({name, goal, budget});
+    }
+    const exVal = document.getElementById("exclude").value.trim();   // 复用全局"忌口排除"约束
+    const exList = exVal ? exVal.split(",").map(s=>s.trim()).filter(Boolean) : [];
+    const miVal = document.getElementById("maxItems").value.trim();
+    const maxItems = (miVal && !isNaN(parseInt(miVal, 10))) ? parseInt(miVal, 10) : 6;
+    renderGroup(groupPick(diners, exList, maxItems));
+  });
+})();
+
+function lineHtml(a,b){ return '<div class="line"><span>'+a+'</span><span>'+b+'</span></div>'; }
+
+function renderGroup(g){
+  const parts = [];
+  const comboStr = g.combined.codes.map(c=>{
+    const it = ITEMS.find(i=>i.code===c); const q = g.combined.qty[c];
+    return (it?it.name:c) + (q>1?(" ×"+q):"");
+  }).join(" + ");
+  parts.push('<div class="combo">合并订单：'+comboStr+'</div>');
+  parts.push(lineHtml("合并原价","¥"+g.combined.rawTotal.toFixed(2)));
+  parts.push(lineHtml("使用优惠券(合并更优)", g.combined.coupon||"无"));
+  parts.push(lineHtml("立减",'<span class="save">¥'+g.combined.discount.toFixed(2)+'</span>'));
+  parts.push(lineHtml("👉 合并实付",'<span class="save">¥'+g.combined.finalTotal.toFixed(2)+'</span>'));
+  g.per.forEach((p,idx)=>{
+    parts.push('<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ffe0b3;font-size:14px;">');
+    parts.push('<b>'+p.name+'</b>（'+GOAL_CN[p.goal]+'）：'+p.items.join(" + "));
+    parts.push(lineHtml("个人原价/券后","¥"+p.raw.toFixed(2)+" → ¥"+p.final.toFixed(2)));
+    parts.push(lineHtml("分摊（按原价占比）",'<span class="save">应付 ¥'+g.shares[idx].toFixed(2)+'</span>'));
+    parts.push('</div>');
+  });
+  const sv = g.savingsVsAlone;
+  const svHtml = sv<0
+    ? '<span style="color:#e63946;">多花 ¥'+(-sv).toFixed(2)+'</span>'
+    : '<span class="save">省 ¥'+sv.toFixed(2)+'</span>';
+  parts.push(lineHtml("拼单相对各自下单", svHtml));
+  parts.push(lineHtml("说明","合并后用更大总价匹配更优券，按原价占比分摊（末位吸收尾差）"));
+  document.getElementById("grpBody").innerHTML = parts.join("");
+  document.getElementById("groupResult").style.display = "block";
+}
 </script>
 </body>
 </html>

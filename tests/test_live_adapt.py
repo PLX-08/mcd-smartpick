@@ -10,12 +10,16 @@ McSmartPick · 真实 MCP 回包解析回归测试（零依赖，直接用 pytho
 """
 import sys
 import os
+import io
+import contextlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
+import mcsmart  # noqa: E402
 from mcsmart import (  # noqa: E402
     _unwrap_mcp_result, _extract_nearest_store, _adapt_menu,
-    _adapt_coupon_records, _adapt_deal_items, smart_pick,
+    _adapt_coupon_records, _adapt_deal_items, _adapt_nutrition,
+    smart_pick, live_pick,
 )
 
 # ---- 真实回包 fixture：query-nearby-stores（裁剪为最近 2 家）----
@@ -110,6 +114,15 @@ PRICE_BY_CODE = {
                                              "originalSubtotal": 2200, "subtotal": 1590}]}},
 }
 
+# ---- 真实回包 fixture：list-nutrition-foods（官方营养，覆盖近似值）----
+NUTRITION = {
+    "success": True, "code": 200, "message": "请求成功",
+    "data": [
+        {"name": "巨无霸", "kcal": 524, "protein": 25, "fat": 28, "carb": 42, "sodium": 970},
+        {"name": "圆筒冰淇淋", "kcal": 150, "protein": 3, "fat": 4, "carb": 25, "sodium": 60},
+    ],
+}
+
 
 class FakeClient:
     """最小化假客户端：按券品商品编码返回对应的真实计价回包。"""
@@ -195,6 +208,118 @@ def run():
     # 10) 券后价应当被识别为"更划算"：同样花钱，券品比单品更值得（13.5 得 2 份中薯条）
     cheap = smart_pick("crave", 15.0, pool, [])
     check("crave picks something sane", cheap["final_total"] <= 15.0 + 1e-6)
+
+    # ---- 真实营养字段映射（list-nutrition-foods）：补全 live 模式此前"全靠近似值"的短板 ----
+    # 13) 映射：回包 -> {餐品名: Nutrition}，字段与顺序正确
+    nm = _adapt_nutrition(NUTRITION)
+    check("nutrition maps name->Nutrition",
+          nm.get("巨无霸") is not None
+          and abs(nm["巨无霸"].protein - 25.0) < 1e-6
+          and abs(nm["巨无霸"].sodium - 970.0) < 1e-6
+          and abs(nm["圆筒冰淇淋"].kcal - 150.0) < 1e-6)
+
+    # 13b) 缺失字段按 0 处理（不崩溃、不抛错）
+    sparse = {"data": [{"name": "X堡"}]}
+    ns = _adapt_nutrition(sparse)
+    check("nutrition missing fields -> 0 (no crash)",
+          ns.get("X堡") is not None
+          and ns["X堡"].protein == 0.0 and ns["X堡"].kcal == 0.0)
+
+    # 13c) 兼容 data 为单对象（dict）而非列表的回包形态
+    obj = {"data": {"name": "Y堡", "protein": 12, "sodium": 300}}
+    ny = _adapt_nutrition(obj)
+    check("nutrition handles dict data (not only list)",
+          ny.get("Y堡") is not None and abs(ny["Y堡"].protein - 12.0) < 1e-6)
+
+    # 11) live_pick 透传自定义 kcal_cap（回归：<=12 轮 CLI 的 --kcal-cap 在 live 模式被静默忽略）
+    #     用与上面一致的真实回包 fixture 搭一个最小假客户端，验证热量上限确实生效。
+    class FakeLiveClient:
+        def initialize(self):
+            return {}
+
+        def call_tool(self, name, arguments=None):
+            arguments = arguments or {}
+            if name == "query-nearby-stores":
+                return NEARBY_STORES
+            if name == "query-meals":
+                return MENU
+            if name == "query-store-coupons":
+                return COUPONS
+            if name == "calculate-price":
+                code = (arguments.get("items") or [{}])[0].get("productCode")
+                return PRICE_BY_CODE.get(code, {})
+            if name == "list-nutrition-foods":
+                return NUTRITION
+            return {}
+
+    lc = FakeLiveClient()
+    # 自定义 cap=200：应选出热量<=200 的方案（圆筒冰淇淋 150 / 可乐 150），而非巨无霸(524)
+    plan_cap200 = live_pick(lc, "save", 40.0, kcal_cap=200.0)
+    kc = plan_cap200["nutrition"]["kcal"]
+    check("live respects custom kcal_cap=200 (0<kcal<=200)", 0 < kc <= 200.0 + 1e-6)
+    # 自定义 cap=120：菜单无任何单品<=120，应被迫返回空方案（证明 cap 被真实约束，而非巧合）
+    plan_cap120 = live_pick(lc, "save", 40.0, kcal_cap=120.0)
+    check("live cap=120 forces empty (cap actually applied)",
+          plan_cap120["nutrition"]["kcal"] <= 120.0 + 1e-6)
+    # 不传 cap 的非 lowcal 目标：cap 应为 None，可选出高热量单品（巨无霸 524）
+    plan_nocap = live_pick(lc, "save", 40.0)
+    check("live no cap -> no kcal ceiling (picks high-kcal ok)",
+          plan_nocap["nutrition"]["kcal"] > 120.0)
+
+    # 11b) 真实营养已接入：当 list-nutrition-foods 返回数据时，plan 标注 nutrition_source=official
+    #      （证明 live 模式不再"全靠近似值"，且字段映射被正确消费）。
+    check("live nutrition_source = official when API returns data",
+          plan_cap200.get("nutrition_source") == "official")
+
+    # 12) 回归：main() 的 --live 分支此前在引用 exclude 时崩溃（NameError，
+    #     因 required/exclude 解析被错误地放在 live 分支 return 之后）。
+    #     此处用真实回包 fixture 的最小假客户端替换 McDMCPClient，
+    #     完整跑通 main() --live --exclude 路径，验证不再抛 NameError 且能产出方案。
+    class _FakeMainClient:
+        def __init__(self, token, url=None):
+            self.token = token
+
+        def initialize(self):
+            return {}
+
+        def call_tool(self, name, arguments=None):
+            arguments = arguments or {}
+            if name == "query-nearby-stores":
+                return NEARBY_STORES
+            if name == "query-meals":
+                return MENU
+            if name == "query-store-coupons":
+                return COUPONS
+            if name == "calculate-price":
+                code = (arguments.get("items") or [{}])[0].get("productCode")
+                return PRICE_BY_CODE.get(code, {})
+            return {}
+
+    saved_client = mcsmart.McDMCPClient
+    mcsmart.McDMCPClient = _FakeMainClient
+    buf = io.StringIO()
+    old_argv = sys.argv
+    try:
+        sys.argv = ["mcsmart", "--live", "--token", "FAKE_TOKEN",
+                    "--goal", "save", "--budget", "40", "--exclude", "辣"]
+        with contextlib.redirect_stdout(buf):
+            mcsmart.main()
+    finally:
+        mcsmart.McDMCPClient = saved_client
+        sys.argv = old_argv
+    out_main = buf.getvalue()
+    check("main --live --exclude runs without NameError",
+          ("NameError" not in out_main) and ("store" in out_main))
+    # 且 --exclude 辣 应确实生效：结果中不应出现"麦辣鸡腿汉堡"
+    check("main --live respects --exclude (no 麦辣鸡腿汉堡)",
+          "麦辣鸡腿汉堡" not in out_main)
+
+    # 12b) 当 list-nutrition-foods 不可用时（本假客户端未实现该工具，返回 {}），
+    #      live_pick 应优雅降级为近似值兜底，并如实标注 nutrition_source=approx（不崩溃）。
+    import json as _j
+    main_json = _j.loads(out_main)
+    check("main --live nutrition_source = approx on fallback",
+          main_json.get("nutrition_source") == "approx")
 
     print(f"\n结果：{passed} passed, {failed} failed")
     return 1 if failed else 0
