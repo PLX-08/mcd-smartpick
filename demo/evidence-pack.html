@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>麦门聪明点 · McSmartPick — 真实 MCP 链路证据包（离线单文件）</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 100'><g fill='%23FFC72C'><path d='M6,96 L6,44 Q6,10 30,10 Q54,10 54,44 L54,96 L40,96 L40,44 Q40,26 30,26 Q20,26 20,44 L20,96 Z'/><path d='M66,96 L66,44 Q66,10 90,10 Q114,10 90,44 L100,96 Z'/></g></svg>" />
+<style>
+  :root{
+    --bg:#fffaf2; --bg2:#fff3e2; --card:#ffffff; --line:#ffe0b3; --line2:#ffd29a;
+    --text:#3a2a16; --muted:#9b7b4a; --soft:#8a6d3b;
+    --gold:#FFC72C; --gold-deep:#B5780A; --gold-bg:#fff6df;
+    --red:#E4002B; --red-deep:#b80023; --red-bg:#fff0f2;
+    --green:#1e9e4f; --green-bg:#eefaf1;
+    --mono:"Cascadia Mono",Consolas,"JetBrains Mono","Courier New",monospace;
+    --shadow:0 8px 24px rgba(228,0,43,.07);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(170deg,var(--bg),var(--bg2));color:var(--text);line-height:1.65;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px;}
+
+  /* ---------- 顶部 ---------- */
+  header.top{padding:34px 20px 20px;text-align:center;}
+  header.top .filetag{display:inline-block;background:var(--green-bg);color:var(--green);
+    border:1px solid #bfe8cc;border-radius:999px;padding:3px 14px;font-size:12.5px;font-weight:700;
+    margin-bottom:12px;letter-spacing:.5px;}
+  header.top h1{font-size:34px;margin:4px 0 6px;color:var(--red);font-weight:800;}
+  header.top h1 small{display:block;font-size:15px;color:var(--muted);font-weight:600;
+    margin-top:6px;letter-spacing:2.5px;}
+  header.top p.lead{max-width:760px;margin:10px auto 0;font-size:15px;color:#5c4527;}
+  .stat-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px;}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:12px 20px;box-shadow:var(--shadow);min-width:150px;}
+  .stat b{display:block;font-size:22px;color:var(--red);font-weight:800;}
+  .stat span{font-size:12.5px;color:var(--muted);}
+
+  /* ---------- 页签 ---------- */
+  nav.tabs{position:sticky;top:0;z-index:50;background:rgba(255,250,242,.94);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin-bottom:22px;}
+  nav.tabs .wrap{display:flex;gap:8px;overflow-x:auto;padding-top:10px;padding-bottom:10px;}
+  .tab-btn{flex:0 0 auto;border:1.5px solid var(--line);background:#fff;color:var(--soft);
+    border-radius:999px;padding:8px 18px;font-size:14px;font-weight:700;cursor:pointer;
+    transition:.15s;font-family:inherit;}
+  .tab-btn:hover{border-color:var(--gold);color:var(--gold-deep);}
+  .tab-btn.active{background:linear-gradient(135deg,var(--gold),#ffb300);border-color:transparent;
+    color:#fff;box-shadow:0 4px 12px rgba(255,199,44,.35);}
+  .tab-pane{display:none;}
+  .tab-pane.active{display:block;animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+  /* ---------- 通用卡片 ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:22px 24px;box-shadow:var(--shadow);margin-bottom:18px;}
+  .card h2{font-size:20px;margin:0 0 4px;color:var(--red);font-weight:800;}
+  .card h3{font-size:16px;margin:18px 0 8px;color:var(--gold-deep);font-weight:800;}
+  .card .sub{color:var(--muted);font-size:13.5px;margin:0 0 14px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:820px){.grid2{grid-template-columns:1fr;}}
+  .kv{font-size:14px;}
+  .kv td{padding:5px 10px 5px 0;vertical-align:top;border-bottom:1px dashed var(--line);}
+  .kv tr:last-child td{border-bottom:0;}
+  .kv td:first-child{color:var(--muted);white-space:nowrap;font-weight:600;}
+  .mono{font-family:var(--mono);font-size:12.5px;}
+  .tid{font-family:var(--mono);font-size:12px;background:var(--gold-bg);border:1px solid var(--line2);
+    border-radius:6px;padding:2px 8px;color:#7a5200;cursor:pointer;user-select:all;
+    display:inline-block;margin:2px 0;transition:.12s;word-break:break-all;}
+  .tid:hover{background:#ffedc4;}
+  .tid.copied{background:var(--green-bg);color:var(--green);border-color:#bfe8cc;}
+  .tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:700;
+    font-family:var(--mono);}
+  .tag.get{background:#e8f1ff;color:#1d5fd0;}
+  .tag.ok{background:var(--green-bg);color:var(--green);}
+  .tag.warn{background:#fff4e0;color:#b26a00;}
+  .tag.empty{background:#f3f3f3;color:#888;}
+  .price-big{font-size:30px;font-weight:800;color:var(--red);font-family:var(--mono);}
+  .price-strike{text-decoration:line-through;color:var(--muted);font-size:15px;}
+
+  /* ---------- 杀手锏对比卡 ---------- */
+  .versus{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin:14px 0;}
+  @media (max-width:720px){.versus{grid-template-columns:1fr;}}
+  .v-card{border-radius:14px;padding:16px 18px;border:1.5px solid var(--line);background:#fff;}
+  .v-card .when{font-size:12.5px;color:var(--muted);font-weight:700;font-family:var(--mono);}
+  .v-card .combo{font-size:14px;font-weight:700;margin:6px 0 8px;}
+  .v-card .amt{font-size:32px;font-weight:800;font-family:var(--mono);color:var(--red);}
+  .v-card.old .amt{color:var(--soft);}
+  .v-arrow{display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--gold-deep);
+    font-weight:800;padding:0 4px;}
+  .delta-note{background:var(--red-bg);border:1px solid #ffc9d2;border-radius:12px;
+    padding:10px 16px;font-size:13.5px;color:var(--red-deep);margin-top:6px;}
+
+  /* ---------- 调用记录 ---------- */
+  .call{border:1.5px solid var(--line);border-radius:14px;background:#fff;margin-bottom:14px;
+    overflow:hidden;}
+  .call-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;
+    background:linear-gradient(180deg,#fffdf7,#fff8ea);border-bottom:1px solid var(--line);}
+  .call-head .tool{font-family:var(--mono);font-weight:800;font-size:14px;color:#7a5200;}
+  .call-head .round{margin-left:auto;font-size:12px;color:var(--muted);font-weight:700;}
+  .call-body{padding:12px 16px;font-size:13.5px;}
+  .call-body table{width:100%;border-collapse:collapse;}
+  .call-body td{padding:4px 12px 4px 0;vertical-align:top;border-bottom:1px dashed #f5e8d5;}
+  .call-body tr:last-child td{border-bottom:0;}
+  .call-body td:first-child{color:var(--muted);white-space:nowrap;font-weight:600;width:86px;}
+  details.raw{margin:10px 16px 14px;border:1px solid var(--line);border-radius:10px;background:#fffdf6;}
+  details.raw summary{cursor:pointer;padding:8px 14px;font-size:12.5px;font-weight:700;
+    color:var(--gold-deep);user-select:none;}
+  details.raw summary:hover{color:var(--red);}
+  details.raw pre{margin:0;padding:12px 14px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:11.5px;line-height:1.55;overflow-x:auto;color:#5c4527;
+    white-space:pre-wrap;word-break:break-all;}
+
+  /* ---------- 话术卡 ---------- */
+  .script{background:linear-gradient(135deg,#fff6df,#ffefd0);border:1.5px solid var(--line2);
+    border-radius:14px;padding:16px 20px;font-size:14.5px;line-height:1.8;}
+  .script b{color:var(--red-deep);}
+  .steps{counter-reset:step;list-style:none;padding:0;margin:0;}
+  .steps li{counter-increment:step;position:relative;padding:10px 0 10px 44px;border-bottom:1px dashed var(--line);}
+  .steps li:last-child{border-bottom:0;}
+  .steps li::before{content:counter(step);position:absolute;left:0;top:10px;width:28px;height:28px;
+    border-radius:50%;background:linear-gradient(135deg,var(--gold),#ffb300);color:#fff;
+    font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .note{background:var(--gold-bg);border-left:4px solid var(--gold);border-radius:0 10px 10px 0;
+    padding:10px 16px;font-size:13.5px;color:#6b4a10;margin:12px 0;}
+  .note.red{background:var(--red-bg);border-left-color:var(--red);color:var(--red-deep);}
+  .note.green{background:var(--green-bg);border-left-color:var(--green);color:#14682f;}
+  .foot{text-align:center;color:var(--muted);font-size:12.5px;padding:26px 20px 40px;line-height:1.8;}
+
+  /* ---------- 引擎演示页（样式全部限定在 #tab-demo 内） ---------- */
+  #tab-demo .demosub{background:var(--gold-bg);border:1px solid var(--line2);border-radius:10px;
+    padding:8px 14px;font-size:12.5px;color:#7a5200;margin-bottom:14px;}
+  #tab-demo .goals{display:flex;gap:10px;flex-wrap:wrap;}
+  #tab-demo .goal{flex:1;min-width:118px;padding:12px 10px;border:2px solid var(--line);border-radius:12px;
+    background:#fffaf2;cursor:pointer;text-align:center;transition:.15s;font-size:14px;}
+  #tab-demo .goal:hover{border-color:var(--gold);}
+  #tab-demo .goal.active{background:#fff1dc;border-color:var(--gold);font-weight:700;color:var(--red);}
+  #tab-demo .goal small{display:block;color:var(--muted);font-size:12px;margin-top:3px;font-weight:400;}
+  #tab-demo .row{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap;}
+  #tab-demo .row label{font-weight:600;}
+  #tab-demo input[type=range]{flex:1;accent-color:#ff8c00;}
+  #tab-demo .budget-val{font-weight:700;color:var(--red);min-width:64px;text-align:right;}
+  #tab-demo button.go{margin-top:18px;width:100%;padding:14px;border:0;border-radius:12px;
+    background:linear-gradient(135deg,#ff8c00,#e63946);color:#fff;font-size:17px;font-weight:700;
+    cursor:pointer;font-family:inherit;}
+  #tab-demo button.go:hover{filter:brightness(1.05);}
+  #tab-demo .result{display:none;}
+  #tab-demo .result h2{font-size:18px;margin:4px 0 12px;color:var(--red);}
+  #tab-demo .combo{font-size:18px;font-weight:700;margin-bottom:8px;}
+  #tab-demo .line{display:flex;justify-content:space-between;padding:6px 0;
+    border-bottom:1px dashed var(--line);font-size:14px;}
+  #tab-demo .line:last-child{border-bottom:0;}
+  #tab-demo .save{color:var(--green);font-weight:700;}
+  #tab-demo .nut{color:var(--soft);}
+  #tab-demo .diner-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="filetag">✅ 单文件 · 零依赖 · 双击即开 · 无需联网 / Python / Token</div>
+  <h1>🍔 麦门聪明点 · McSmartPick<small>REAL MCP EVIDENCE PACK · 真实链路证据包</small></h1>
+  <p class="lead">本文件用于在<strong>任何一台陌生电脑</strong>上证明：本项目<strong>真的接入了麦当劳官方 MCP</strong>（mcp.mcd.cn），
+  不是纸面 Demo。所有价格、门店、优惠券数据均为官方接口真实回放，每条记录带官方 <span class="mono">traceId</span> 可追溯。</p>
+  <div class="stat-row">
+    <div class="stat"><b>13 次</b><span>官方接口真实调用（两轮采集）</span></div>
+    <div class="stat"><b>¥49.00→¥50.50</b><span>同款组合 4 天内的官方核价变化</span></div>
+    <div class="stat"><b>184 项</b><span>自动化测试全绿（149 引擎 + 35 回包回归）</span></div>
+  </div>
+</header>
+
+<nav class="tabs"><div class="wrap">
+  <button class="tab-btn active" data-tab="how">🚀 30 秒上手</button>
+  <button class="tab-btn" data-tab="evidence">🔴 真实链路证据（核心）</button>
+  <button class="tab-btn" data-tab="demo">🤖 引擎现场演示</button>
+  <button class="tab-btn" data-tab="honesty">📐 数据口径与边界</button>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ==================== TAB 1：30 秒上手 ==================== -->
+<section class="tab-pane active" id="tab-how">
+  <div class="card">
+    <h2>这个文件是什么</h2>
+    <p class="sub">一个网页文件，但更像一份「可播放的证据档案」。</p>
+    <table class="kv">
+      <tr><td>它证明什么</td><td>项目通过<strong>麦当劳官方 MCP</strong>（<span class="mono">https://mcp.mcd.cn</span>）拉取<strong>实时</strong>门店、菜单、优惠券，并用官方计价接口核算价格——四段链路全部真实跑通，留有官方 <span class="mono">traceId</span>。</td></tr>
+      <tr><td>为什么能离线看</td><td>真实调用发生在 <strong>2026-10-14</strong> 与 <strong>2026-10-18</strong>，回包已完整固化进本文件。打开本文件<strong>不会</strong>发起任何网络请求，不依赖 Python、不依赖 Token。</td></tr>
+      <tr><td>四个页签</td><td>① 30 秒上手（当前页）→ ② <strong>真实链路证据</strong>（核心，演示时主要放这页）→ ③ 引擎现场演示（可上手玩）→ ④ 数据口径与边界（被追问时翻这页）。</td></tr>
+      <tr><td>现场怎么用</td><td>浏览器打开 → 点「真实链路证据」→ 从上往下讲，<strong>2 分钟讲完</strong>。话术见下方。</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>🎤 两分钟讲法（照着念即可）</h2>
+    <p class="sub">核心信息只有一句：数据是真的，而且会变。</p>
+    <div class="script">
+      「这个项目叫<b>麦门聪明点</b>：你对它说一句『增肌，预算 35』，它去麦当劳官方接口拉实时菜单和优惠券，用代码算出最划算的组合，再讲成人话。<br><br>
+      这不是 PPT 里的示意图——接下来你们看到的是麦当劳官方服务器的<b>真实回放</b>。每一行都带官方返回的 <b>traceId</b>，是可以在麦当劳那边追溯的。<br><br>
+      最有意思的是这两行：<b>同样的三件套</b>，巨无霸加中薯条加可乐，<b>10 月 14 号</b>官方收 <b>49 块</b>，<b>10 月 18 号</b>官方收 <b>50 块 5</b>。价格是会长大的——因为数据真的是从麦当劳服务器<strong>实时</strong>拉下来的，不是写死在程序里的。<br><br>
+      还有这个：10 月 14 号这家店还有两张优惠券，10 月 18 号再查，<b>券过期了，官方接口直接返回空</b>。优惠券也有生命周期，这同样假不了。<br><br>
+      算钱这件事，我们<strong>不让大模型口算</strong>，而是交给可测试的纯代码：官方接口返回的金额单位是分，我们除以 100 再求和，跟官方核价逐分对齐。这件事有 <b>184 个自动化测试</b>盯着，其中 35 个测试直接拿官方真实回包当输入，回归防的是『官方改了结构我们不知道』。」
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🗺️ 演示路线图</h2>
+    <ol class="steps">
+      <li><strong>开场 30 秒</strong>：念上方话术前两段，建立「这不是 PPT」的预期。</li>
+      <li><strong>核心 60 秒</strong>：切到「真实链路证据」页，重点打<b> ¥49.00 → ¥50.50 </b>对比卡和<b>券过期</b>卡。这两张是全场最难伪造的证据。</li>
+      <li><strong>互动 30 秒</strong>：切到「引擎现场演示」页，点一个「一键示例」（如「健身增肌」），让大家看到引擎怎么搭方案。<i>注意：此页用的是示例数据，不是实时数据，讲的时候要主动说明，别让人误以为它在调官方接口。</i></li>
+      <li><strong>兜底</strong>：如果有人追问数据真实性，切到「数据口径与边界」页，每个数字的出处都在表里；也可以现场点开任意一条调用的<b>原始回包 JSON</b>。</li>
+    </ol>
+    <div class="note red">⚠️ 讲引擎演示页时务必主动说一句「这是离线示例数据」——主动说明边界比被人抓住更可信。诚实是本项目的人设，也是评分点。</div>
+  </div>
+</section>
+
+<!-- ==================== TAB 2：真实链路证据 ==================== -->
+<section class="tab-pane" id="tab-evidence">
+  <div class="card">
+    <h2>🔴 四段链路，两轮采集，13 次真实调用</h2>
+    <p class="sub">调用对象：麦当劳官方 MCP <span class="mono">https://mcp.mcd.cn</span>（MCP Streamable HTTP / JSON-RPC 2.0）。
+    地点参数：宁波 · 天一广场。门店：麦当劳宁波海曙区开明街餐厅 <span class="mono">3330480</span> / 新天一广场餐厅 <span class="mono">3330440</span>。</p>
+    <table class="kv">
+      <tr><td>链路</td><td><span class="tag get">query-nearby-stores</span> 附近门店 → <span class="tag get">query-meals</span> 实时菜单 → <span class="tag get">query-store-coupons</span> 门店券 → <span class="tag get">calculate-price</span> 官方核价</td></tr>
+      <tr><td>第一轮</td><td>2026-10-14 15:16（GMT+8）· 6 次调用 · 留档 <span class="mono">evidence-real.md</span></td></tr>
+      <tr><td>第二轮</td><td>2026-10-18 20:21 – 20:25（GMT+8）· 7 次调用 · 留档 <span class="mono">evidence-real-2026-10-18.md</span></td></tr>
+    </table>
+  </div>
+
+  <!-- 杀手锏：价格会变 -->
+  <div class="card">
+    <h2>💥 证据一：同一组合，官方核价 4 天涨了 ¥1.50</h2>
+    <p class="sub">这是全套材料里最易懂、也最难伪造的一条——写死的数据不可能「涨价」。</p>
+    <div class="versus">
+      <div class="v-card old">
+        <div class="when">2026-10-14 15:16 · 第一轮</div>
+        <div class="combo">巨无霸 + 中薯条 + 可乐</div>
+        <div class="amt">¥49.00</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px;" class="mono">25.50 + 13.50 + 10.00<br>traceId ad938ccabd2ab90b7cc63887a4c78f7b</div>
+      </div>
+      <div class="v-arrow">⟶</div>
+      <div class="v-card">
+        <div class="when">2026-10-18 20:24 · 第二轮</div>
+        <div class="combo">巨无霸 + 中薯条 + 可乐（完全相同）</div>
+        <div class="amt">¥50.50</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px;" class="mono">26.50 + 14.50 + 9.50<br>traceId cd2fe8407ffedcdd8e382262d0e89a29</div>
+      </div>
+    </div>
+    <table class="kv">
+      <tr><td>巨无霸 <span class="mono">1100</span></td><td>¥25.50 ⟶ <strong>¥26.50</strong>（↑ ¥1.00）</td></tr>
+      <tr><td>中薯条 <span class="mono">4810</span></td><td>¥13.50 ⟶ <strong>¥14.50</strong>（↑ ¥1.00）</td></tr>
+      <tr><td>可乐 <span class="mono">9900008751</span></td><td>¥10.00 ⟶ <strong>¥9.50</strong>（↓ ¥0.50）</td></tr>
+    </table>
+    <div class="delta-note">📌 两涨一降，净涨 ¥1.50（+3.1%）。官方菜单价格随时间真实变动——这正是「实时接口」最直接的证明。</div>
+  </div>
+
+  <!-- 券的生命周期 -->
+  <div class="card">
+    <h2>🎫 证据二：优惠券会过期，过期后官方接口直接返回空</h2>
+    <p class="sub">券不是摆设，它有真实有效期——这同样伪造不了。</p>
+    <table class="kv">
+      <tr><td>10-14 · 门店 3330480</td><td><span class="tag ok">2 张券在有效期</span> 中薯条买一送一、王牌小食拼（有效期至 2026-10-16 23:59）</td></tr>
+      <tr><td>10-18 · 门店 3330480</td><td><span class="tag empty">data: [] 空</span> 两张券已过期，从官方接口消失 &nbsp;<span class="tid" title="点击复制">b3ca5baee8ed8f92171540257dfe4c8c</span></td></tr>
+      <tr><td>10-18 · 门店 3330440</td><td><span class="tag ok">1 张券在有效期</span> 「9.9元中杯冰美式」（有效期 2026-10-14 → 10-20）&nbsp;<span class="tid" title="点击复制">f2e7603ea8122cdf8629760f6d4a10e4</span></td></tr>
+    </table>
+    <div class="note">💡 演示用的券会过期。本证据包采集于 2026-10-18；若现场要演「用券计价」，请确认券仍在有效期（此券至 10-20），或按操作手册换店/换券。</div>
+  </div>
+
+  <!-- 三层价格 -->
+  <div class="card">
+    <h2>☕ 证据三：一杯冰美式的「三层价格」，券后价比促销价还低</h2>
+    <p class="sub">2026-10-18 · 门店 3330440 · 麦咖啡™冰美式中杯 <span class="mono">507411</span></p>
+    <div class="versus">
+      <div class="v-card old"><div class="when">官方原价</div><div class="amt">¥19.00</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px;">菜单 originalPrice</div></div>
+      <div class="v-arrow">→</div>
+      <div class="v-card"><div class="when">菜单促销价</div><div class="amt" style="color:var(--gold-deep);">¥11.90</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px;">query-meals currentPrice</div></div>
+      <div class="v-arrow">→</div>
+      <div class="v-card"><div class="when">用券后实付</div><div class="amt" style="color:var(--green);">¥9.90</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px;">calculate-price + couponId</div></div>
+    </div>
+    <table class="kv">
+      <tr><td>官方核算</td><td>原价 <span class="mono">1900</span> 分 − 优惠 <span class="mono">910</span> 分 = 实付 <span class="mono">990</span> 分（金额单位均为<strong>分</strong>，÷100 转元）</td></tr>
+      <tr><td>traceId</td><td><span class="tid" title="点击复制">acb6aaa638e8ad04b0b22ca358d501a3</span>（2026-10-18 20:24:44）</td></tr>
+      <tr><td>说明了什么</td><td><strong>券后价 ¥9.90 比菜单促销价 ¥11.90 还低 ¥2.00</strong>——「用不用券、用哪张券」必须当成算法问题来解，这正是项目把券建模为「券品」参与组合优化的原因。</td></tr>
+    </table>
+  </div>
+
+  <!-- 逐条调用记录 -->
+  <div class="card">
+    <h2>📞 逐条调用记录（traceId 可点击复制）</h2>
+    <p class="sub">按链路顺序排列。点开「原始回包」可查看官方返回的 JSON 原文。</p>
+
+    <div class="call">
+      <div class="call-head"><span class="tag get">GET 门店</span><span class="tool">query-nearby-stores</span><span class="round">两轮均调用 · 结果一致</span></div>
+      <div class="call-body"><table>
+        <tr><td>入参</td><td class="mono">{"searchType": 2, "beType": 1, "city": "宁波", "keyword": "天一广场"}</td></tr>
+        <tr><td>结果</td><td>命中 5 家门店；最近：开明街餐厅 <span class="mono">3330480</span> @218m，其次新天一广场 <span class="mono">3330440</span> @270m。两轮采集门店集合完全一致。</td></tr>
+        <tr><td>traceId</td><td><span class="tid">e3cda57b675e68b951fc4226581d7e1c</span>（10-14）　<span class="tid">21f099804a13439f249ef2ae05f81ad0</span>（10-18）</td></tr>
+        <tr><td>代码对应</td><td><span class="mono">_extract_nearest_store()</span> 按 distance 升序取最近门店</td></tr>
+      </table></div>
+    </div>
+
+    <div class="call">
+      <div class="call-head"><span class="tag get">GET 菜单</span><span class="tool">query-meals</span><span class="round">10-14 @3330480 ｜ 10-18 @3330440</span></div>
+      <div class="call-body"><table>
+        <tr><td>入参</td><td class="mono">{"storeCode": "3330440", "orderType": 1, "beType": 1}</td></tr>
+        <tr><td>结果</td><td>13 个菜单分类，餐品按 <span class="mono">productCode</span> 索引，含 currentPrice / originalPrice。10-18 菜单价：巨无霸 ¥26.50、中薯条 ¥14.50、可乐 ¥9.50、麦咖啡冰美式中杯 ¥11.90（原价 ¥19.00 促销中）。</td></tr>
+        <tr><td>traceId</td><td><span class="tid">8d9516ec67a133345d35e9c86bb753be</span>（10-14）　<span class="tid">b38778b774e2735540ff310e32efa919</span>（10-18）</td></tr>
+        <tr><td>代码对应</td><td><span class="mono">_adapt_menu()</span> 映射为内部 Item；品类由菜单分组名推断（汉堡→main、薯条→side…）</td></tr>
+      </table></div>
+      <details class="raw"><summary>▸ 原始回包节选（query-meals · 2026-10-18 · 门店 3330440）</summary><pre>{
+  "success": true, "code": 200, "message": "请求成功",
+  "datetime": "2026-10-18 20:22:31",
+  "traceId": "b38778b774e2735540ff310e32efa919",
+  "data": {
+    "categories": [ /* 13 个菜单分类 */ ],
+    "meals": {
+      "1100":      { "name": "巨无霸",            "currentPrice": "26.5",  "originalPrice": "26.5"  },
+      "4810":      { "name": "中薯条",            "currentPrice": "14.5",  "originalPrice": "14.5"  },
+      "9900008751":{ "name": "可乐",              "currentPrice": "9.5",   "originalPrice": "9.5"   },
+      "507411":    { "name": "麦咖啡™冰美式中杯", "currentPrice": "11.9",  "originalPrice": "19.0"  }
+      /* ……其余餐品省略…… */
+    }
+  }
+}</pre></details>
+    </div>
+
+    <div class="call">
+      <div class="call-head"><span class="tag get">GET 门店券</span><span class="tool">query-store-coupons</span><span class="round">两轮 · 三个门店查询</span></div>
+      <div class="call-body"><table>
+        <tr><td>入参</td><td class="mono">{"storeCode": "3330480" | "3330440", "orderType": 1, "beType": 1}</td></tr>
+        <tr><td>结果</td><td>10-14 @3330480：2 张券（中薯条买一送一 <span class="mono">9900012387</span>、王牌小食拼 <span class="mono">9900016371</span>，均有效期至 10-16）。10-18 @3330480：<span class="tag empty">data: []</span> 已过期。10-18 @3330440：「9.9元中杯冰美式」券品 <span class="mono">507411</span>，有效期 10-14 → 10-20。</td></tr>
+        <tr><td>traceId</td><td><span class="tid">80ffd2228890d2d6e13884d556bc6a19</span>（10-14）　<span class="tid">b3ca5baee8ed8f92171540257dfe4c8c</span>（10-18 空）　<span class="tid">f2e7603ea8122cdf8629760f6d4a10e4</span>（10-18 有效券）</td></tr>
+        <tr><td>关键发现</td><td>门店券是<strong>「指定商品特价券品」</strong>，不是满减券；券对应独立券品编码，挂普通商品编码会被官方拒绝（<span class="mono">code 600012</span>）。项目据此把每张券转成「券品」：先单独调一次 calculate-price 拿券后实付价，再作为候选加入组合优化。</td></tr>
+      </table></div>
+    </div>
+
+    <div class="call">
+      <div class="call-head"><span class="tag get">核价</span><span class="tool">calculate-price · 无券组合</span><span class="round">两轮同款 · 对照涨价</span></div>
+      <div class="call-body"><table>
+        <tr><td>入参</td><td class="mono">items=[{1100,1},{4810,1},{9900008751,1}] · storeCode=3330480(10-14)/3330440(10-18) · orderType=1 · beType=1</td></tr>
+        <tr><td>10-14 回包</td><td>原价 <span class="mono">4900</span> 分 ｜ 优惠 <span class="mono">0</span> ｜ <strong>实付 ¥49.00</strong>　<span class="tid">ad938ccabd2ab90b7cc63887a4c78f7b</span></td></tr>
+        <tr><td>10-18 回包</td><td>原价 <span class="mono">5050</span> 分 ｜ 优惠 <span class="mono">0</span>｜ <strong>实付 ¥50.50</strong>　<span class="tid">cd2fe8407ffedcdd8e382262d0e89a29</span></td></tr>
+        <tr><td>本地校验</td><td>26.50 + 14.50 + 9.50 = 50.50 ✅ 与官方逐分一致（本地算术对齐官方核价，有测试盯着）</td></tr>
+      </table></div>
+      <details class="raw"><summary>▸ 原始回包全文（calculate-price · 2026-10-18 · 无券组合）</summary><pre>{
+  "success": true, "code": 200, "message": "请求成功",
+  "datetime": "2026-10-18 20:24:43",
+  "traceId": "cd2fe8407ffedcdd8e382262d0e89a29",
+  "data": {
+    "productOriginalPrice": 5050, "productPrice": 5050,
+    "originalPrice": 5050, "discount": 0, "price": 5050,
+    "productList": [
+      {"productCode": "1100",       "productName": "巨无霸", "quantity": 1, "originalSubtotal": 2650, "subtotal": 2650},
+      {"productCode": "4810",       "productName": "中薯条", "quantity": 1, "originalSubtotal": 1450, "subtotal": 1450},
+      {"productCode": "9900008751", "productName": "可乐",   "quantity": 1, "originalSubtotal": 950,  "subtotal": 950}
+    ],
+    "takeWayList": [
+      {"code": "eat-in",         "title": "堂食", "subtitle": "店内用餐"},
+      {"code": "take-in-store",  "title": "外带", "subtitle": "店内自提"}
+    ]
+  }
+}</pre></details>
+    </div>
+
+    <div class="call">
+      <div class="call-head"><span class="tag get">核价</span><span class="tool">calculate-price · 券品组合（10-18）</span><span class="round">演示「券后价」</span></div>
+      <div class="call-body"><table>
+        <tr><td>入参</td><td class="mono">items=[{507411,1, couponId=264B97DBE02BE6CF996AA6914151C4A9, couponCode=MCD601QS0F9X1005S900J}] · storeCode=3330440</td></tr>
+        <tr><td>回包</td><td>原价 <span class="mono">1900</span> 分 ｜ 商品现价 <span class="mono">990</span> 分 ｜ 优惠 <span class="mono">910</span> 分 ｜ <strong>实付 ¥9.90</strong>　<span class="tid">acb6aaa638e8ad04b0b22ca358d501a3</span></td></tr>
+        <tr><td>本地校验</td><td>19.00 − 9.10 = 9.90 ✅；券名「9.9元中杯冰美式」与实付一致</td></tr>
+      </table></div>
+      <details class="raw"><summary>▸ 原始回包全文（calculate-price · 2026-10-18 · 券品组合）</summary><pre>{
+  "success": true, "code": 200, "message": "请求成功",
+  "datetime": "2026-10-18 20:24:44",
+  "traceId": "acb6aaa638e8ad04b0b22ca358d501a3",
+  "data": {
+    "productOriginalPrice": 1900, "productPrice": 990,
+    "originalPrice": 1900, "discount": 910, "price": 990,
+    "productList": [
+      {"productCode": "507411", "productName": "麦咖啡™冰美式中杯", "quantity": 1,
+       "originalSubtotal": 1900, "subtotal": 990}
+    ],
+    "takeWayList": [
+      {"code": "eat-in",        "title": "堂食", "subtitle": "店内用餐"},
+      {"code": "take-in-store", "title": "外带", "subtitle": "店内自提"}
+    ]
+  }
+}</pre></details>
+    </div>
+
+    <div class="call">
+      <div class="call-head"><span class="tag get">时间</span><span class="tool">now-time-info</span><span class="round">10-18</span></div>
+      <div class="call-body"><table>
+        <tr><td>回包</td><td><span class="mono">2026-10-18 20:21:44</span>（GMT+08:00）——所有回包的 <span class="mono">datetime</span> 字段以此为基准，可用于核对「记录是否真的产生于所称时刻」。</td></tr>
+        <tr><td>traceId</td><td><span class="tid">878b11a675bbb8146d853186271f555c</span></td></tr>
+      </table></div>
+    </div>
+
+    <div class="note green">✅ <strong>10-14 轮次的完整记录</strong>（含「中薯条买一送一 ¥27→¥13.50」「王牌小食拼 ¥22→¥15.90」两次券品核价，traceId <span class="mono">c696cc16933004412fba555e10d2cc55</span> / <span class="mono">4caf9089bb865a062ef27165ae4ae42d</span>）见仓库 <span class="mono">evidence-real.md</span>；10-18 轮次见 <span class="mono">evidence-real-2026-10-18.md</span>。</div>
+  </div>
+
+  <!-- 代码对应 -->
+  <div class="card">
+    <h2>🧩 真实回包 ↔ 项目代码 ↔ 回归测试</h2>
+    <p class="sub">「接了」不是嘴上说：每类回包都有对应的解析函数，且解析逻辑被测试锁死。</p>
+    <table class="kv">
+      <tr><td>JSON-RPC 信封 / <span class="mono">content[0].text</span></td><td><span class="mono">_unwrap_mcp_result</span> / <span class="mono">_loads_loose</span> ⟶ 3 项测试</td></tr>
+      <tr><td>query-nearby-stores</td><td><span class="mono">_extract_nearest_store</span> ⟶ <span class="mono">nearest store = 3330480 @218m</span></td></tr>
+      <tr><td>query-meals</td><td><span class="mono">_adapt_menu</span> / <span class="mono">_derive_category</span> ⟶ <span class="mono">巨无霸 price=25.5</span>、品类推断 4 项</td></tr>
+      <tr><td>query-store-coupons</td><td><span class="mono">_adapt_coupon_records</span> ⟶ <span class="mono">coupon records</span></td></tr>
+      <tr><td>券品券后价</td><td><span class="mono">_adapt_deal_items</span> ⟶ <span class="mono">deal item … price=13.5 / 15.9</span></td></tr>
+      <tr><td>组合优化</td><td><span class="mono">smart_pick</span>（纯函数）⟶ <span class="mono">live pool optimizes within budget</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ==================== TAB 3：引擎演示 ==================== -->
+<section class="tab-pane" id="tab-demo">
+  <div class="card">
+    <h2>🤖 引擎现场演示（可上手玩）</h2>
+    <div class="demosub">📢 注意：本页是<strong>纯前端引擎</strong>，使用<strong>示例数据</strong>（与 Python 引擎 smart_pick 同逻辑、同结果），<strong>不调用</strong>官方接口。真实官方数据链路见上一页。这样设计是为了让任何电脑不装任何环境就能体验引擎能力。</div>
+
+    <div class="badge" style="display:inline-block;background:#fff1dc;color:#e63946;border:1px solid #ffd29a;border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:8px;">选择你的目标</div>
+    <div class="goals" id="goals">
+      <div class="goal active" data-goal="save">省钱<small>预算内最划算</small></div>
+      <div class="goal" data-goal="protein">增肌高蛋白<small>蛋白最大化</small></div>
+      <div class="goal" data-goal="lowcal">低卡控糖<small>低热量高蛋白</small></div>
+      <div class="goal" data-goal="crave">解馋满足<small>快乐最大化</small></div>
+      <div class="goal" data-goal="kids">儿童营养<small>蛋白+蔬果奶·控钠</small></div>
+    </div>
+    <div class="row">
+      <label>预算</label>
+      <input type="range" id="budget" min="15" max="60" step="1" value="30" />
+      <span class="budget-val">¥<span id="budgetVal">30</span></span>
+    </div>
+    <button class="go" id="go">🤖 帮我聪明点</button>
+
+    <div style="margin-top:18px;">
+      <div class="badge" style="display:inline-block;background:#fff1dc;color:#e63946;border:1px solid #ffd29a;border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:8px;">一键示例（点一下场景，立刻看引擎怎么搭）</div>
+      <div class="goals" id="presets">
+        <div class="goal" data-preset="save" data-budget="30">学生党省钱<small>省钱·预算30</small></div>
+        <div class="goal" data-preset="protein" data-budget="35">健身增肌<small>高蛋白·预算35</small></div>
+        <div class="goal" data-preset="lowcal" data-budget="30">减脂低卡<small>低卡·预算30</small></div>
+        <div class="goal" data-preset="crave" data-budget="25">解馋小确幸<small>解馋·预算25</small></div>
+        <div class="goal" data-preset="kids" data-budget="40">带娃儿童餐<small>儿童营养·预算40</small></div>
+        <div class="goal" data-preset="lowcal" data-budget="40" data-kcal-cap="500">减脂控卡<small>低卡·上限500kcal</small></div>
+        <div class="goal" data-preset="save" data-budget="40" data-require-main="1">只点正餐<small>省钱·必含主餐</small></div>
+        <div class="goal" data-preset="save" data-budget="30" data-allow-repeat="1">宿舍囤粮<small>省钱·同款多份</small></div>
+        <div class="goal" data-preset="crave" data-budget="25" data-allow-repeat="1">解馋续杯<small>解馋·同款多份·甜品券</small></div>
+        <div class="goal" data-preset="protein" data-budget="35" data-require-main="1">健身正餐<small>增肌·必含主餐</small></div>
+        <div class="goal" data-preset="lowcal" data-budget="40" data-kcal-cap="500" data-exclude="甜品">控卡忌口<small>低卡·上限500·忌口甜品</small></div>
+        <div class="goal" data-preset="kids" data-budget="40" data-exclude="辣">宝宝餐单<small>儿童营养·忌口辣</small></div>
+        <div class="goal" data-group-preset='[{"name":"室友A","goal":"protein","budget":35},{"name":"室友B","goal":"crave","budget":25},{"name":"学妹C","goal":"kids","budget":40}]'>朋友聚会拼单<small>三人·各取所需</small></div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;">
+      <div class="badge" style="display:inline-block;background:#fff1dc;color:#e63946;border:1px solid #ffd29a;border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:8px;">高级选项（可选，展示引擎已支持的约束）</div>
+      <div class="row">
+        <label>必含餐品</label>
+        <input type="text" id="required" placeholder="餐品编码，逗号分隔，如 M1,S1,D1"
+          style="flex:1;padding:8px;border:1px solid var(--line);border-radius:10px;font-size:14px;" />
+      </div>
+      <div class="row">
+        <label>忌口排除</label>
+        <input type="text" id="exclude" placeholder="关键词，逗号分隔，如 辣,香菜"
+          style="flex:1;padding:8px;border:1px solid var(--line);border-radius:10px;font-size:14px;" />
+      </div>
+      <div class="row">
+        <label>热量上限</label>
+        <input type="number" id="kcalCap" min="0" step="10" placeholder="kcal，留空则低卡默认 800"
+          style="flex:1;padding:8px;border:1px solid var(--line);border-radius:10px;font-size:14px;" />
+      </div>
+      <div class="row">
+        <label>必含主餐</label>
+        <label style="flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--soft);cursor:pointer;">
+          <input type="checkbox" id="requireMain" /> 只要正餐（至少一份汉堡/卷，不要纯小食）
+        </label>
+      </div>
+      <div class="row">
+        <label>最多几件</label>
+        <input type="number" id="maxItems" min="1" max="10" step="1" value="6"
+          style="flex:1;padding:8px;border:1px solid var(--line);border-radius:10px;font-size:14px;" />
+      </div>
+      <div class="row">
+        <label>可重复</label>
+        <label style="flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--soft);cursor:pointer;">
+          <input type="checkbox" id="allowRepeat" /> 同款可点多份（约束背包，更划算）
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;">
+      <div class="badge" style="display:inline-block;background:#fff1dc;color:#e63946;border:1px solid #ffd29a;border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:8px;">组队拼单（可选，展示引擎 group_pick 能力）</div>
+      <p style="font-size:13px;color:var(--soft);margin:0 0 10px;line-height:1.5;">为多人各自按目标/预算生成方案，再合并成一笔订单用更大总价匹配更优券，按各自原始金额占比公平分摊（末位吸收尾差）。复用上方"忌口排除"约束。</p>
+      <div id="diners"></div>
+      <button type="button" id="addDiner" style="margin-top:10px;padding:8px 14px;border:1px solid var(--line2);border-radius:10px;background:#fffaf2;color:#e63946;font-weight:600;cursor:pointer;font-family:inherit;">＋ 添加成员</button>
+      <button class="go" id="goGroup" style="margin-top:12px;">👥 拼单结算</button>
+    </div>
+
+    <div class="result" id="result">
+      <h2 id="resTitle"></h2>
+      <div class="combo" id="resCombo"></div>
+      <div class="line"><span>原价</span><span id="resRaw"></span></div>
+      <div class="line"><span>使用优惠券</span><span id="resCoupon"></span></div>
+      <div class="line"><span>券适用口径</span><span id="resCouponScope"></span></div>
+      <div class="line"><span>立减</span><span class="save" id="resDiscount"></span></div>
+      <div class="line"><span>👉 实付</span><span class="save" id="resFinal"></span></div>
+      <div class="line nut"><span>营养参考</span><span id="resNut"></span></div>
+      <div class="line nut" id="resMeta"></div>
+    </div>
+
+    <div class="result" id="groupResult">
+      <h2 id="grpTitle">组队拼单结果</h2>
+      <div id="grpBody"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== TAB 4：口径与边界 ==================== -->
+<section class="tab-pane" id="tab-honesty">
+  <div class="card">
+    <h2>📐 数据口径表（每个数字的出处）</h2>
+    <p class="sub">被问到「这数哪来的」时，翻这页。</p>
+    <table class="kv">
+      <tr><td>¥49.00 / ¥50.50</td><td>官方 <span class="mono">calculate-price</span> 回包 <span class="mono">price</span> 字段（单位分，÷100）。10-14 traceId <span class="mono">ad938cc…</span>；10-18 traceId <span class="mono">cd2fe840…</span></td></tr>
+      <tr><td>巨无霸 ¥26.50 等</td><td>官方 <span class="mono">query-meals</span> 回包 <span class="mono">currentPrice</span>，10-18 采集</td></tr>
+      <tr><td>¥19.00 → ¥9.90</td><td>官方 <span class="mono">calculate-price</span> 券品回包：<span class="mono">productOriginalPrice=1900</span>、<span class="mono">discount=910</span>、<span class="mono">price=990</span></td></tr>
+      <tr><td>门店距离 218m / 270m</td><td>官方 <span class="mono">query-nearby-stores</span> 回包 <span class="mono">distance</span> 字段</td></tr>
+      <tr><td>券有效期</td><td>官方 <span class="mono">query-store-coupons</span> 回包；「过期后返回空」为 10-18 对 3330480 的实测</td></tr>
+      <tr><td>187 项测试</td><td>2026-10-18 20:42 本机实跑：<span class="mono">test_engine.py</span> 152 passed + <span class="mono">test_live_adapt.py</span> 35 passed，0 failed。Python 3.13.14，零第三方依赖</td></tr>
+      <tr><td>引擎演示页数字</td><td><strong>示例数据</strong>（与 CLI <span class="mono">--demo</span> 输出一致，见 <span class="mono">demo/sample_run.md</span>），非实时官方数据——已在该页显著标注</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>🛡️ 边界与诚实声明</h2>
+    <ol style="font-size:14px;line-height:1.9;padding-left:22px;margin:6px 0 0;">
+      <li><strong>价格是快照</strong>：所有价格为采集时刻（2026-10-14 / 2026-10-18）的官方返回值，会随门店与时间变化。演示用券「9.9元中杯冰美式」有效期至 2026-10-20，过期后需换店/换券。</li>
+      <li><strong>营养字段官方不给</strong>：<span class="mono">query-meals</span> 不返回 kcal/蛋白。live 模式优先调用官方 <span class="mono">list-nutrition-foods</span> 覆盖；不可用时的近似值会标注 <span class="mono">nutrition_source=approx</span>，营养结论以官方为准。</li>
+      <li><strong>券的建模</strong>：门店券是「指定商品特价券品」非满减券，必须配券品编码使用；本项目不叠加两类券虚报省钱（<span class="mono">coupon_strategy</span> 字段标注实际路径）。</li>
+      <li><strong>本文件不含任何 Token / 个人信息</strong>；traceId 为官方返回，可用于麦当劳侧追溯。</li>
+      <li><strong>非官方产品</strong>：本项目为麦当劳中国 1024 程序员节创意开发大赛参赛作品，与麦当劳官方无隶属关系；输出仅供参考，不构成营养/医疗建议。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>🧪 为什么敢说「不是纸面 Demo」</h2>
+    <table class="kv">
+      <tr><td>真实回包被测试锁死</td><td>35 项回归测试直接以官方真实回包（fixtures）为输入，官方改结构 → 测试立刻红</td></tr>
+      <tr><td>算钱不让模型口算</td><td>金额单位分→元转换、求和、选券全部在纯函数中完成，可复现、可审计；149 项引擎测试含「与独立 oracle 交叉验证」</td></tr>
+      <tr><td>诚实省钱</td><td>限定品类券按<strong>品类小计</strong>判定门槛（修掉过「白捡折扣」的建模错误）；拼单省可能是负数也如实输出</td></tr>
+      <tr><td>安全默认</td><td>下单等交易类工具必须用户显式确认，默认只读与规划</td></tr>
+    </table>
+  </div>
+</section>
+
+</div><!-- /wrap -->
+
+<div class="foot">
+  麦门聪明点 · McSmartPick ｜ 麦当劳中国 1024 程序员节创意开发大赛参赛作品<br>
+  本文件为零依赖单文件证据包 · 采集时间 2026-10-14 / 2026-10-18 · 项目仓库 github.com/PLX-08/mcd-smartpick<br>
+  非麦当劳官方产品；真实餐品/价格/供应以麦当劳官方实时数据为准。
+</div>
+
+<script>
+// ---------- 页签切换 ----------
+document.querySelectorAll(".tab-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    window.scrollTo({top:0, behavior:"smooth"});
+  });
+});
+
+// ---------- traceId 点击复制 ----------
+document.querySelectorAll(".tid").forEach(function(el){
+  el.addEventListener("click", function(){
+    var text = el.textContent.trim();
+    function done(){ var old = el.textContent; el.textContent = "✓ 已复制"; el.classList.add("copied");
+      setTimeout(function(){ el.textContent = old; el.classList.remove("copied"); }, 1200); }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(function(){ fallback(); });
+    } else { fallback(); }
+    function fallback(){
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch(e) {}
+      document.body.removeChild(ta);
+    }
+  });
+});
+</script>
+
+<script>
+// ============================================================
+// 引擎演示（与 demo/index.html 及 Python scripts/mcsmart.py 同逻辑）
+// 以下代码为纯前端复刻：示例数据 + 约束内组合搜索，不调用任何接口
+// ============================================================
+const ITEMS = [
+  {code:"M1",name:"巨无霸",cat:"main",price:24,tags:["经典","牛肉"],n:{kcal:524,protein:25,fat:28,carb:42,sodium:970},crave:9},
+  {code:"M2",name:"麦辣鸡腿堡",cat:"main",price:21,tags:["辣","鸡肉"],n:{kcal:500,protein:21,fat:26,carb:44,sodium:980},crave:8},
+  {code:"M3",name:"板烧鸡腿堡",cat:"main",price:22,tags:["鸡肉"],n:{kcal:440,protein:27,fat:18,carb:42,sodium:1100},crave:7},
+  {code:"M4",name:"双层吉士堡",cat:"main",price:19,tags:["牛肉","芝士"],n:{kcal:440,protein:25,fat:23,carb:34,sodium:1010},crave:8},
+  {code:"M5",name:"麦香鸡",cat:"main",price:14,tags:["鸡肉"],n:{kcal:410,protein:17,fat:22,carb:36,sodium:760},crave:6},
+  {code:"M6",name:"猪柳麦满分",cat:"breakfast",price:13,tags:["早餐","猪肉"],n:{kcal:310,protein:17,fat:16,carb:26,sodium:750},crave:6},
+  {code:"S1",name:"薯条(大)",cat:"side",price:12,tags:["薯条"],n:{kcal:500,protein:6,fat:25,carb:63,sodium:650},crave:9},
+  {code:"S2",name:"薯条(中)",cat:"side",price:10,tags:["薯条"],n:{kcal:340,protein:4,fat:17,carb:43,sodium:440},crave:8},
+  {code:"S3",name:"麦乐鸡(6块)",cat:"side",price:15,tags:["鸡肉","分享"],n:{kcal:290,protein:15,fat:16,carb:17,sodium:540},crave:8},
+  {code:"S4",name:"玉米杯",cat:"side",price:9,tags:["蔬菜","健康"],n:{kcal:90,protein:3,fat:1,carb:18,sodium:10},crave:3},
+  {code:"S5",name:"苹果片",cat:"side",price:8,tags:["水果","健康"],n:{kcal:35,protein:0,fat:0,carb:8,sodium:0},crave:2},
+  {code:"D1",name:"可乐(中)",cat:"drink",price:10,tags:["碳酸","冰"],n:{kcal:150,protein:0,fat:0,carb:39,sodium:15},crave:7},
+  {code:"D2",name:"雪碧(中)",cat:"drink",price:10,tags:["碳酸","冰"],n:{kcal:150,protein:0,fat:0,carb:39,sodium:15},crave:7},
+  {code:"D3",name:"纯牛奶",cat:"drink",price:11,tags:["牛奶","健康"],n:{kcal:150,protein:8,fat:8,carb:12,sodium:110},crave:4},
+  {code:"D4",name:"橙汁(小)",cat:"drink",price:12,tags:["果汁","维C"],n:{kcal:110,protein:1,fat:0,carb:26,sodium:10},crave:5},
+  {code:"D5",name:"美式咖啡",cat:"drink",price:13,tags:["咖啡","无糖"],n:{kcal:5,protein:0,fat:0,carb:1,sodium:5},crave:3},
+  {code:"E1",name:"麦旋风(OREO)",cat:"dessert",price:16,tags:["甜品","冰"],n:{kcal:350,protein:6,fat:12,carb:54,sodium:180},crave:10},
+  {code:"E2",name:"苹果派",cat:"dessert",price:7,tags:["甜品","热"],n:{kcal:250,protein:3,fat:11,carb:36,sodium:230},crave:7},
+  {code:"E3",name:"圆筒冰淇淋",cat:"dessert",price:5,tags:["甜品","冰"],n:{kcal:150,protein:3,fat:4,carb:25,sodium:60},crave:8},
+  {code:"V1",name:"田园脆鸡沙拉",cat:"side",price:18,tags:["沙拉","健康","蔬菜"],n:{kcal:180,protein:12,fat:8,carb:14,sodium:420},crave:4},
+];
+const COUPONS = [
+  {id:"C1",name:"满30减8",kind:"amount",value:8,min:30,scope:"all"},
+  {id:"C2",name:"满40减12",kind:"amount",value:12,min:40,scope:"all"},
+  {id:"C3",name:"全场9折",kind:"percent",value:10,min:0,scope:"all"},
+  {id:"C4",name:"甜品满15减5",kind:"amount",value:5,min:15,scope:"dessert"},
+];
+const GOAL_CN = {save:"省钱", protein:"增肌高蛋白", lowcal:"低卡控糖", crave:"解馋满足", kids:"儿童营养"};
+const SCOPE_CN = {all:"全场", dessert:"甜品", drink:"饮品", side:"小食", main:"主餐", breakfast:"早餐"};
+
+function catTotals(sel){
+  const t={};
+  for(const i of sel) t[i.cat]=(t[i.cat]||0)+i.price;
+  return t;
+}
+function couponDiscount(total, coupon, ct){
+  if(!coupon) return 0;
+  let base = total;
+  if(coupon.scope!=="all" && ct) base = Math.min(ct[coupon.scope]||0, total);
+  let d = coupon.kind==="amount" ? coupon.value : base*coupon.value/100;
+  return Math.min(d, base, total);
+}
+function bestCoupon(total, cats, ct){
+  let best=null, bestD=0;
+  for(const c of COUPONS){
+    if(c.scope!=="all"){
+      if(!cats.has(c.scope)) continue;
+      if(ct){
+        const st = ct[c.scope]||0;
+        if(st < c.min) continue;
+        let d = c.kind==="amount" ? c.value : st*c.value/100;
+        d = Math.min(d, st, total);
+        if(d > bestD){ bestD=d; best=c; }
+        continue;
+      }
+      if(total < c.min) continue;
+    }else{
+      if(total < c.min) continue;
+    }
+    let d = c.kind==="amount" ? c.value : total*c.value/100;
+    d = Math.min(d, total);
+    if(d > bestD){ bestD=d; best=c; }
+  }
+  return {coupon:best, discount:bestD};
+}
+function objectiveKey(goal, sel, final){
+  const prot = sel.reduce((s,i)=>s+i.n.protein,0);
+  if(goal==="protein") return [prot, -final, -sel.length];
+  if(goal==="save"){
+    const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
+    const shareable = sel.reduce((s,i)=>s+i.tags.filter(t=>t==="分享").length,0);
+    return [prot + 0.3*kcal + 0.3*shareable, -final, -sel.length];
+  }
+  if(goal==="lowcal"){
+    const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
+    const carb = sel.reduce((s,i)=>s+i.n.carb,0);
+    return [kcal>0 ? prot/kcal : 0, -carb, -final, -sel.length];
+  }
+  if(goal==="crave"){
+    const c = sel.reduce((s,i)=>s+i.crave,0);
+    const indulgent = sel.reduce((s,i)=>s+i.tags.filter(t=>["辣","脆","炸","甜品","冰"].includes(t)).length,0);
+    return [c + 0.3*indulgent, -final, -sel.length];
+  }
+  if(goal==="kids"){
+    const sodium = sel.reduce((s,i)=>s+i.n.sodium,0);
+    const healthy = sel.reduce((s,i)=>s+i.tags.filter(t=>["健康","蔬菜","水果","牛奶","维C"].includes(t)).length,0);
+    const spicy = sel.reduce((s,i)=>s+i.tags.filter(t=>t==="辣").length,0);
+    const soda = sel.reduce((s,i)=>s+i.tags.filter(t=>t==="碳酸").length,0);
+    const score = prot - sodium*0.02 + healthy*1.5 - spicy*3 - soda*2;
+    return [score, -final, -sel.length];
+  }
+  throw new Error("未知目标: " + goal);
+}
+function keyGreater(a, b){
+  for(let i=0;i<a.length;i++){
+    if(a[i] > b[i] + 1e-12) return true;
+    if(a[i] < b[i] - 1e-12) return false;
+  }
+  return false;
+}
+function combinations(arr, k){
+  const res=[];
+  const pick=(start, cur)=>{
+    if(cur.length===k){ res.push(cur.slice()); return; }
+    for(let i=start;i<arr.length;i++){ cur.push(arr[i]); pick(i+1, cur); cur.pop(); }
+  };
+  pick(0, []);
+  return res;
+}
+function combinationsWithReplacement(arr, k){
+  const res=[];
+  const pick=(start, cur)=>{
+    if(cur.length===k){ res.push(cur.slice()); return; }
+    for(let i=start;i<arr.length;i++){ cur.push(arr[i]); pick(i, cur); cur.pop(); }
+  };
+  pick(0, []);
+  return res;
+}
+function smartPick(goal, budget, required=[], maxItems=6, kcalCap=null, exclude=[], requireMain=false, allowRepeat=false){
+  const selReq = [];
+  for(const code of required){
+    const it = ITEMS.find(i=>i.code===code);
+    if(it && !selReq.includes(it)) selReq.push(it);
+  }
+  const isExcluded = (it)=>{
+    if(!exclude || !exclude.length) return false;
+    const blob = (it.name + " " + it.tags.join(" ")).toLowerCase();
+    return exclude.some(k=>{ const t = k.trim().toLowerCase(); return t && blob.includes(t); });
+  };
+  const pool = ITEMS.filter(i=>!selReq.includes(i) && !isExcluded(i));
+  const maxExtra = Math.max(0, maxItems - selReq.length);
+
+  let repCap = maxExtra;
+  if(allowRepeat){
+    repCap = Math.min(maxExtra, 8);
+    let cheapest = Infinity;
+    for(const it of pool) if(it.price < cheapest) cheapest = it.price;
+    if(cheapest > 0 && isFinite(cheapest)) repCap = Math.min(repCap, Math.floor(budget / cheapest));
+  }
+
+  let best=null, bestKey=null;
+  const consider = (sel)=>{
+    const raw = sel.reduce((s,i)=>s+i.price,0);
+    if(raw > budget + 1e-9) return;
+    const kcal = sel.reduce((s,i)=>s+i.n.kcal,0);
+    if(kcalCap!==null && kcal > kcalCap + 1e-9) return;
+    if(requireMain && !sel.some(i=>i.cat==="main")) return;
+    const cats = new Set(sel.map(i=>i.cat));
+    const ct = catTotals(sel);
+    const {coupon, discount} = bestCoupon(raw, cats, ct);
+    const final = Math.max(raw - discount, 0);
+    const key = objectiveKey(goal, sel, final);
+    if(best===null || keyGreater(key, bestKey)){
+      best = {sel: sel.slice(), raw, final, coupon, discount};
+      bestKey = key;
+    }
+  };
+  for(let k=0;k<=repCap;k++){
+    const gen = allowRepeat ? combinationsWithReplacement(pool, k) : combinations(pool, k);
+    for(const combo of gen){
+      consider(selReq.concat(combo));
+    }
+  }
+
+  if(best===null){
+    const sel = selReq;
+    const raw = sel.reduce((s,i)=>s+i.price,0);
+    const cats = new Set(sel.map(i=>i.cat));
+    const {coupon, discount} = bestCoupon(raw, cats, catTotals(sel));
+    best = {sel, raw, final: Math.max(raw-discount,0), coupon, discount};
+  }
+
+  const {sel, raw, final, coupon, discount} = best;
+  const nut = sel.reduce((s,i)=>({kcal:s.kcal+i.n.kcal,protein:s.protein+i.n.protein,
+    fat:s.fat+i.n.fat,carb:s.carb+i.n.carb,sodium:s.sodium+i.n.sodium}),
+    {kcal:0,protein:0,fat:0,carb:0,sodium:0});
+  return {goal,items:sel.map(i=>i.name),codes:sel.map(i=>i.code),raw:raw,coupon:coupon?coupon.name:null,
+    couponScope:coupon?coupon.scope:null,
+    discount:discount,final:final,savings:raw-final,nut:nut};
+}
+
+let curGoal = "save";
+document.querySelectorAll("#tab-demo .goal").forEach(function(el){
+  el.addEventListener("click", function(){
+    document.querySelectorAll("#tab-demo .goal").forEach(x=>x.classList.remove("active"));
+    el.classList.add("active"); curGoal = el.dataset.goal;
+  });
+});
+const budget = document.getElementById("budget");
+budget.addEventListener("input", function(){ document.getElementById("budgetVal").textContent = budget.value; });
+function runSinglePick(){
+  const reqVal = document.getElementById("required").value.trim();
+  const reqCodes = reqVal ? reqVal.split(",").map(s=>s.trim()).filter(Boolean) : [];
+  const exVal = document.getElementById("exclude").value.trim();
+  const exList = exVal ? exVal.split(",").map(s=>s.trim()).filter(Boolean) : [];
+  const kcalVal = document.getElementById("kcalCap").value.trim();
+  let kcalCap = (kcalVal && !isNaN(parseFloat(kcalVal))) ? parseFloat(kcalVal) : null;
+  if(kcalCap===null && curGoal==="lowcal") kcalCap = 800;
+  const requireMain = document.getElementById("requireMain").checked;
+  const allowRepeat = document.getElementById("allowRepeat").checked;
+  const miVal = document.getElementById("maxItems").value.trim();
+  const maxItems = (miVal && !isNaN(parseInt(miVal, 10))) ? parseInt(miVal, 10) : 6;
+
+  const plan = smartPick(curGoal, parseFloat(budget.value), reqCodes, maxItems, kcalCap, exList, requireMain, allowRepeat);
+  document.getElementById("resTitle").textContent = "目标：" + GOAL_CN[plan.goal] + " ｜ 预算 ¥" + budget.value;
+  document.getElementById("resCombo").textContent = "推荐搭配：" + (plan.items.length?plan.items.join(" + "):"（无可行组合）");
+  document.getElementById("resRaw").textContent = "¥" + plan.raw.toFixed(2);
+  document.getElementById("resCoupon").textContent = plan.coupon || "无";
+  const scopeNote = plan.couponScope
+    ? (plan.couponScope === "all" ? "全场券（整单达标）"
+        : "限定品类券（" + (SCOPE_CN[plan.couponScope] || plan.couponScope) + "类小计达标）")
+    : "未触发（无可用券）";
+  document.getElementById("resCouponScope").textContent = scopeNote;
+  document.getElementById("resDiscount").textContent = "¥" + plan.discount.toFixed(2);
+  document.getElementById("resFinal").textContent = "¥" + plan.final.toFixed(2) + "（省 ¥" + plan.savings.toFixed(2) + "）";
+  const n = plan.nut;
+  document.getElementById("resNut").textContent = n.kcal + " kcal ｜ 蛋白 " + n.protein + "g ｜ 脂肪 " + n.fat + "g ｜ 碳水 " + n.carb + "g";
+  const meta = [];
+  if(reqCodes.length) meta.push("必含：" + reqCodes.join("/"));
+  if(exList.length) meta.push("忌口排除：" + exList.join("/"));
+  if(kcalCap!==null) meta.push("热量上限：" + kcalCap + " kcal");
+  if(requireMain) meta.push("必含主餐");
+  if(allowRepeat) meta.push("同款可重复");
+  if(maxItems !== 6) meta.push("最多 " + maxItems + " 件");
+  document.getElementById("resMeta").textContent = meta.length ? meta.join(" ｜ ") : "（无额外约束）";
+  document.getElementById("result").style.display = "block";
+}
+document.getElementById("go").addEventListener("click", runSinglePick);
+
+document.querySelectorAll("#tab-demo #presets .goal[data-preset]").forEach(function(el){
+  el.addEventListener("click", function(){
+    curGoal = el.dataset.preset;
+    const b = el.dataset.budget;
+    document.querySelectorAll("#tab-demo #goals .goal").forEach(function(x){
+      x.classList.toggle("active", x.dataset.goal === curGoal);
+    });
+    budget.value = b;
+    document.getElementById("budgetVal").textContent = b;
+    document.getElementById("required").value = "";
+    document.getElementById("exclude").value = el.dataset.exclude || "";
+    document.getElementById("kcalCap").value = el.dataset.kcalCap || "";
+    document.getElementById("requireMain").checked = (el.dataset.requireMain === "1");
+    document.getElementById("allowRepeat").checked = (el.dataset.allowRepeat === "1");
+    document.getElementById("maxItems").value = "6";
+    runSinglePick();
+  });
+});
+document.querySelectorAll("#tab-demo #presets .goal[data-group-preset]").forEach(function(el){
+  el.addEventListener("click", function(){
+    const diners = JSON.parse(el.dataset.groupPreset);
+    const box = document.getElementById("diners");
+    box.innerHTML = "";
+    diners.forEach(function(d){ box.appendChild(makeDinerRow(d.name, d.goal, d.budget)); });
+    document.getElementById("exclude").value = "";
+    document.getElementById("allowRepeat").checked = false;
+    document.getElementById("maxItems").value = "6";
+    document.getElementById("goGroup").click();
+  });
+});
+
+function groupPick(diners, exclude=[], maxItems=6){
+  const per = [];
+  const combinedQty = {};
+  const combinedCodes = [];
+  for(const d of diners){
+    const plan = smartPick(d.goal, d.budget, [], maxItems, null, exclude);
+    per.push({name:d.name, goal:d.goal, items:plan.items, codes:plan.codes,
+      raw:plan.raw, coupon:plan.coupon, discount:plan.discount, final:plan.final,
+      savings:plan.savings, nut:plan.nut});
+    for(const code of plan.codes){
+      if(!combinedQty[code]){ combinedQty[code]=0; combinedCodes.push(code); }
+      combinedQty[code]++;
+    }
+  }
+  const priceOf = {}; ITEMS.forEach(function(i){ priceOf[i.code]=i.price; });
+  let rawTotal = 0; combinedCodes.forEach(function(c){ rawTotal += (priceOf[c]||0)*combinedQty[c]; });
+  const cats = new Set();
+  const ct = {};
+  combinedCodes.forEach(function(c){ const it = ITEMS.find(i=>i.code===c);
+    if(it){ cats.add(it.cat); ct[it.cat]=(ct[it.cat]||0)+it.price*combinedQty[c]; } });
+  const {coupon, discount} = bestCoupon(rawTotal, cats, ct);
+  let finalTotal = Math.max(rawTotal - discount, 0);
+  const sumRaw = per.reduce((s,p)=>s+p.raw,0);
+  const shares=[]; let allocated=0; const n=per.length;
+  per.forEach(function(p,idx){
+    let share;
+    if(sumRaw<=0 || n===0){ share = n ? Math.round(finalTotal/n*100)/100 : 0; }
+    else { share = Math.round(finalTotal*p.raw/sumRaw*100)/100; }
+    if(idx===n-1){ share = Math.round((finalTotal-allocated)*100)/100; }
+    else { allocated += share; }
+    shares.push(share);
+  });
+  const aloneTotal = per.reduce((s,p)=>s+p.final,0);
+  const savingsVsAlone = Math.round((finalTotal-aloneTotal)*100)/100;
+  return {per, combined:{codes:combinedCodes, qty:combinedQty, rawTotal:Math.round(rawTotal*100)/100,
+    coupon:coupon?coupon.name:null, couponScope:coupon?coupon.scope:null,
+    discount:Math.round(discount*100)/100, finalTotal:Math.round(finalTotal*100)/100},
+    shares, savingsVsAlone};
+}
+
+function makeDinerRow(name, goal, budget){
+  const row = document.createElement("div");
+  row.className = "diner-row";
+  row.innerHTML =
+    '<input class="d-name" type="text" placeholder="昵称" value="'+(name||"")+'" style="width:84px;padding:6px;border:1px solid var(--line);border-radius:8px;font-size:13px;" />' +
+    '<select class="d-goal" style="padding:6px;border:1px solid var(--line);border-radius:8px;font-size:13px;">' +
+      '<option value="save">省钱</option><option value="protein">增肌高蛋白</option>' +
+      '<option value="lowcal">低卡控糖</option><option value="crave">解馋满足</option>' +
+      '<option value="kids">儿童营养</option></select>' +
+    '<span style="font-size:13px;">预算¥</span>' +
+    '<input class="d-budget" type="number" min="10" step="1" value="'+(budget||35)+'" style="width:70px;padding:6px;border:1px solid var(--line);border-radius:8px;font-size:13px;" />' +
+    '<button type="button" class="d-del" style="border:0;background:none;color:#e63946;cursor:pointer;font-size:16px;">✕</button>';
+  row.querySelector(".d-goal").value = goal || "protein";
+  row.querySelector(".d-del").addEventListener("click", function(){ row.remove(); });
+  return row;
+}
+
+(function initDiners(){
+  const box = document.getElementById("diners");
+  box.appendChild(makeDinerRow("A", "protein", 35));
+  box.appendChild(makeDinerRow("B", "crave", 25));
+  document.getElementById("addDiner").addEventListener("click", function(){
+    document.getElementById("diners").appendChild(makeDinerRow("", "save", 30));
+  });
+  document.getElementById("goGroup").addEventListener("click", function(){
+    const rows = Array.from(document.querySelectorAll("#tab-demo #diners .diner-row"));
+    if(!rows.length){ alert("请至少添加一位成员"); return; }
+    const diners = [];
+    for(const r of rows){
+      const name = (r.querySelector(".d-name").value||"").trim() || ("成员"+(diners.length+1));
+      const goal = r.querySelector(".d-goal").value;
+      let budget = parseFloat(r.querySelector(".d-budget").value);
+      if(isNaN(budget) || budget<0) budget = 30;
+      diners.push({name, goal, budget});
+    }
+    const exVal = document.getElementById("exclude").value.trim();
+    const exList = exVal ? exVal.split(",").map(s=>s.trim()).filter(Boolean) : [];
+    const miVal = document.getElementById("maxItems").value.trim();
+    const maxItems = (miVal && !isNaN(parseInt(miVal, 10))) ? parseInt(miVal, 10) : 6;
+    renderGroup(groupPick(diners, exList, maxItems));
+  });
+})();
+
+function lineHtml(a,b){ return '<div class="line"><span>'+a+'</span><span>'+b+'</span></div>'; }
+
+function renderGroup(g){
+  const parts = [];
+  const comboStr = g.combined.codes.map(function(c){
+    const it = ITEMS.find(i=>i.code===c); const q = g.combined.qty[c];
+    return (it?it.name:c) + (q>1?(" ×"+q):"");
+  }).join(" + ");
+  parts.push('<div class="combo">合并订单：'+comboStr+'</div>');
+  parts.push(lineHtml("合并原价","¥"+g.combined.rawTotal.toFixed(2)));
+  parts.push(lineHtml("使用优惠券(合并更优)", g.combined.coupon||"无"));
+  parts.push(lineHtml("券适用口径", g.combined.couponScope
+    ? (g.combined.couponScope === "all"
+        ? "全场券（整单达标）"
+        : "限定品类券（" + (SCOPE_CN[g.combined.couponScope] || g.combined.couponScope) + "类小计达标）")
+    : "未触发（无可用券）"));
+  parts.push(lineHtml("立减",'<span class="save">¥'+g.combined.discount.toFixed(2)+'</span>'));
+  parts.push(lineHtml("👉 合并实付",'<span class="save">¥'+g.combined.finalTotal.toFixed(2)+'</span>'));
+  g.per.forEach(function(p,idx){
+    parts.push('<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:14px;">');
+    parts.push('<b>'+p.name+'</b>（'+GOAL_CN[p.goal]+'）：'+p.items.join(" + "));
+    parts.push(lineHtml("个人原价/券后","¥"+p.raw.toFixed(2)+" → ¥"+p.final.toFixed(2)));
+    parts.push(lineHtml("分摊（按原价占比）",'<span class="save">应付 ¥'+g.shares[idx].toFixed(2)+'</span>'));
+    parts.push('</div>');
+  });
+  const sv = g.savingsVsAlone;
+  const svHtml = sv<0
+    ? '<span style="color:#e63946;">多花 ¥'+(-sv).toFixed(2)+'</span>'
+    : '<span class="save">省 ¥'+sv.toFixed(2)+'</span>';
+  parts.push(lineHtml("拼单相对各自下单", svHtml));
+  parts.push(lineHtml("说明","合并后用更大总价匹配更优券，按原价占比分摊（末位吸收尾差）"));
+  document.getElementById("grpBody").innerHTML = parts.join("");
+  document.getElementById("groupResult").style.display = "block";
+}
+</script>
+</body>
+</html>
